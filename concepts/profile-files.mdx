@@ -1,0 +1,534 @@
+---
+title: Profile Files
+description: Configure recipient access to Delta Sharing servers using profile files
+---
+
+A **profile file** is a JSON configuration file that contains the information a recipient needs to access shared data on a Delta Sharing server. Profile files serve as the authentication and connection configuration for Delta Sharing clients.
+
+## Overview
+
+Profile files are the primary mechanism for distributing access credentials to data recipients. They contain:
+
+<CardGroup cols={2}>
+  <Card title="Server Endpoint" icon="server">
+    The URL of the Delta Sharing server
+  </Card>
+  <Card title="Authentication" icon="key">
+    Bearer token for secure API access
+  </Card>
+  <Card title="Expiration" icon="clock">
+    Optional token expiration timestamp
+  </Card>
+  <Card title="Version Info" icon="code-branch">
+    Protocol version for compatibility
+  </Card>
+</CardGroup>
+
+## Profile File Format
+
+Profile files are JSON documents with the following structure:
+
+```json
+{
+  "shareCredentialsVersion": 1,
+  "endpoint": "https://sharing.delta.io/delta-sharing/",
+  "bearerToken": "<token>",
+  "expirationTime": "2021-11-12T00:12:29.0Z"
+}
+```
+
+## Field Specifications
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| **shareCredentialsVersion** | Integer | Yes | Profile file format version (currently `1`) |
+| **endpoint** | String | Yes | URL of the Delta Sharing server |
+| **bearerToken** | String | Yes | Authentication token for API requests |
+| **expirationTime** | String | No | Token expiration in ISO 8601 format |
+
+### shareCredentialsVersion
+
+The `shareCredentialsVersion` field indicates the profile file format version:
+
+- **Current version**: `1`
+- **Purpose**: Enables non-backward-compatible changes to profile format
+- **Client behavior**: Display upgrade message if version is unsupported
+
+<Info>
+When the profile format evolves, the version number will increment. Clients should validate they support the specified version before attempting to connect.
+</Info>
+
+### endpoint
+
+The server endpoint URL where the Delta Sharing server is hosted:
+
+```json
+{
+  "endpoint": "https://sharing.delta.io/delta-sharing/"
+}
+```
+
+**Requirements:**
+- Must be a valid HTTPS URL
+- Should end with a trailing slash
+- Forms the base for all API requests
+
+**Example API construction:**
+```
+{endpoint}/shares/{share}/schemas/{schema}/tables/{table}
+↓
+https://sharing.delta.io/delta-sharing/shares/vaccine_share/schemas/acme_vaccine_data/tables/vaccine_patients
+```
+
+### bearerToken
+
+The authentication token used for all API requests:
+
+```json
+{
+  "bearerToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+**Usage:**
+Included in the `Authorization` header of every request:
+
+```http
+GET /shares
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+<Warning>
+**Security Best Practices**
+- Store profile files securely
+- Never commit profile files to version control
+- Rotate tokens regularly
+- Use short-lived tokens when possible
+- Revoke tokens immediately when compromised
+</Warning>
+
+### expirationTime
+
+Optional timestamp indicating when the bearer token expires:
+
+```json
+{
+  "expirationTime": "2021-11-12T00:12:29.0Z"
+}
+```
+
+**Format:** [ISO 8601](https://www.w3.org/TR/NOTE-datetime) timestamp with timezone
+
+**Examples:**
+- `2021-11-12T00:12:29.0Z` (UTC)
+- `2021-11-12T00:12:29.123Z` (with milliseconds)
+
+<Note>
+If `expirationTime` is omitted, the token is treated as never expiring. However, servers may still enforce server-side expiration policies.
+</Note>
+
+**Client behavior:**
+- Check expiration before making requests
+- Display clear error messages when tokens expire
+- Prompt users to request new profile files
+
+## Complete Example
+
+Here's a fully-populated profile file example:
+
+```json profile.json
+{
+  "shareCredentialsVersion": 1,
+  "endpoint": "https://sharing.acme-corp.com/delta-sharing/",
+  "bearerToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJyZWNpcGllbnQxMjMiLCJpYXQiOjE2MzY2ODQzNDksImV4cCI6MTYzNzI4OTE0OX0.signature",
+  "expirationTime": "2024-12-31T23:59:59.0Z"
+}
+```
+
+## Storage Locations
+
+Profile files should be stored securely on the recipient's system. Common locations include:
+
+<Tabs>
+  <Tab title="Linux/macOS">
+    **User Home Directory:**
+    ```bash
+    ~/.delta_sharing/profiles/production.json
+    ```
+    
+    **Project Directory:**
+    ```bash
+    ./config/delta-sharing-profile.json
+    ```
+    
+    **Permissions:**
+    ```bash
+    chmod 600 ~/.delta_sharing/profiles/production.json
+    ```
+  </Tab>
+  
+  <Tab title="Windows">
+    **User Profile:**
+    ```
+    C:\Users\username\.delta_sharing\profiles\production.json
+    ```
+    
+    **Project Directory:**
+    ```
+    .\config\delta-sharing-profile.json
+    ```
+    
+    **Security:**
+    Remove inheritance and grant access only to current user
+  </Tab>
+  
+  <Tab title="Environment Variables">
+    Reference profile location via environment variable:
+    
+    ```bash
+    export DELTA_SHARING_PROFILE="/secure/path/to/profile.json"
+    ```
+    
+    ```python
+    import os
+    profile_path = os.getenv('DELTA_SHARING_PROFILE')
+    ```
+  </Tab>
+</Tabs>
+
+<Warning>
+**Never store profile files in:**
+- Public repositories
+- Unencrypted cloud storage
+- Shared directories
+- Application logs
+- Client-side code in web applications
+</Warning>
+
+## Using Profile Files
+
+### Python (delta-sharing)
+
+```python
+import delta_sharing
+
+# Load profile
+profile_file = "/path/to/profile.json"
+client = delta_sharing.SharingClient(profile_file)
+
+# List shares
+shares = client.list_shares()
+
+# Load table as Pandas DataFrame
+table_url = profile_file + "#share.schema.table"
+df = delta_sharing.load_as_pandas(table_url)
+```
+
+### Python (Manual)
+
+```python
+import json
+import requests
+
+# Read profile
+with open('profile.json', 'r') as f:
+    profile = json.load(f)
+
+# Make API request
+response = requests.get(
+    f"{profile['endpoint']}/shares",
+    headers={
+        "Authorization": f"Bearer {profile['bearerToken']}"
+    }
+)
+
+shares = response.json()
+```
+
+### Apache Spark
+
+```scala
+val profileFile = "/path/to/profile.json"
+
+// Read shared table
+val df = spark.read
+  .format("deltaSharing")
+  .option("responseFormat", "delta")
+  .load(s"${profileFile}#share.schema.table")
+
+df.show()
+```
+
+### Pandas (delta-sharing connector)
+
+```python
+import delta_sharing
+
+# Create client
+client = delta_sharing.SharingClient("/path/to/profile.json")
+
+# List all tables
+tables = client.list_all_tables()
+
+# Read specific table
+table = delta_sharing.Table(
+    share="vaccine_share",
+    schema="acme_vaccine_data",
+    table="vaccine_patients"
+)
+df = delta_sharing.load_as_pandas(table, profile_file="/path/to/profile.json")
+```
+
+## Profile File Distribution
+
+Data providers typically distribute profile files through secure channels:
+
+<Steps>
+  <Step title="Generate Credentials">
+    Provider creates a recipient identity and generates a bearer token
+  </Step>
+  
+  <Step title="Create Profile">
+    Provider assembles profile file with endpoint and token
+  </Step>
+  
+  <Step title="Secure Distribution">
+    Provider sends profile file through secure channel:
+    - Encrypted email
+    - Secure file transfer
+    - Password-protected archive
+    - Identity provider integration
+  </Step>
+  
+  <Step title="Recipient Configuration">
+    Recipient stores profile file securely and configures their client
+  </Step>
+</Steps>
+
+<AccordionGroup>
+  <Accordion title="Email Distribution">
+    Send profile as encrypted attachment:
+    - Use PGP/GPG encryption
+    - Password-protect ZIP archive
+    - Send password through separate channel
+  </Accordion>
+  
+  <Accordion title="Web Portal">
+    Provide secure download portal:
+    - Require authentication
+    - Enable MFA
+    - Log download activity
+    - Allow token rotation
+  </Accordion>
+  
+  <Accordion title="API-based">
+    Integrate with identity providers:
+    - OAuth 2.0 flows
+    - SAML authentication
+    - Automated profile generation
+    - Dynamic token management
+  </Accordion>
+</AccordionGroup>
+
+## Token Management
+
+### Expiration Handling
+
+Clients should handle token expiration gracefully:
+
+```python
+import json
+from datetime import datetime
+
+def is_token_valid(profile_path):
+    with open(profile_path) as f:
+        profile = json.load(f)
+    
+    # Check if expirationTime exists
+    if 'expirationTime' not in profile:
+        return True  # No expiration specified
+    
+    # Parse expiration time
+    expiration = datetime.fromisoformat(
+        profile['expirationTime'].replace('Z', '+00:00')
+    )
+    
+    # Compare with current time
+    return datetime.now(expiration.tzinfo) < expiration
+
+if not is_token_valid('profile.json'):
+    print("Token has expired. Please request a new profile file.")
+```
+
+### Token Rotation
+
+Best practices for token rotation:
+
+1. **Provider side:**
+   - Generate new tokens before old ones expire
+   - Provide overlap period for migration
+   - Send notifications before expiration
+
+2. **Recipient side:**
+   - Monitor expiration dates
+   - Update profile files promptly
+   - Test new credentials before old ones expire
+
+### Revocation
+
+When credentials are compromised:
+
+<Steps>
+  <Step title="Immediate Revocation">
+    Provider revokes bearer token server-side
+  </Step>
+  
+  <Step title="Notification">
+    Provider notifies recipient of compromise
+  </Step>
+  
+  <Step title="New Credentials">
+    Provider issues new profile file with fresh token
+  </Step>
+  
+  <Step title="Verification">
+    Verify old token no longer works
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+### Common Issues
+
+<AccordionGroup>
+  <Accordion title="401 Unauthorized">
+    **Causes:**
+    - Invalid bearer token
+    - Expired token
+    - Token revoked by provider
+    
+    **Solutions:**
+    - Verify token in profile file
+    - Check `expirationTime`
+    - Request new profile file from provider
+  </Accordion>
+  
+  <Accordion title="Connection Errors">
+    **Causes:**
+    - Incorrect endpoint URL
+    - Network connectivity issues
+    - Firewall blocking requests
+    
+    **Solutions:**
+    - Verify endpoint URL is correct
+    - Test network connectivity: `curl {endpoint}/shares`
+    - Check firewall rules
+  </Accordion>
+  
+  <Accordion title="Unsupported Version">
+    **Causes:**
+    - Client doesn't support profile version
+    - Outdated client library
+    
+    **Solutions:**
+    - Upgrade client library
+    - Check documentation for version compatibility
+  </Accordion>
+</AccordionGroup>
+
+### Validation Script
+
+```python
+import json
+import requests
+from datetime import datetime
+
+def validate_profile(profile_path):
+    # Read profile
+    with open(profile_path) as f:
+        profile = json.load(f)
+    
+    # Check required fields
+    required = ['shareCredentialsVersion', 'endpoint', 'bearerToken']
+    for field in required:
+        if field not in profile:
+            print(f"❌ Missing required field: {field}")
+            return False
+    
+    # Check version
+    if profile['shareCredentialsVersion'] != 1:
+        print(f"❌ Unsupported version: {profile['shareCredentialsVersion']}")
+        return False
+    
+    # Check expiration
+    if 'expirationTime' in profile:
+        expiration = datetime.fromisoformat(
+            profile['expirationTime'].replace('Z', '+00:00')
+        )
+        if datetime.now(expiration.tzinfo) >= expiration:
+            print("❌ Token has expired")
+            return False
+    
+    # Test connection
+    try:
+        response = requests.get(
+            f"{profile['endpoint']}/shares",
+            headers={"Authorization": f"Bearer {profile['bearerToken']}"},
+            timeout=10
+        )
+        if response.status_code == 200:
+            print("✅ Profile is valid and working")
+            return True
+        else:
+            print(f"❌ Server returned status {response.status_code}")
+            return False
+    except Exception as e:
+        print(f"❌ Connection error: {e}")
+        return False
+
+validate_profile('profile.json')
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Security">
+    - Store profile files in secure locations with restricted permissions
+    - Never commit profile files to version control
+    - Use `.gitignore` to exclude profile files
+    - Rotate tokens regularly
+    - Monitor for unauthorized access
+  </Accordion>
+  
+  <Accordion title="Organization">
+    - Use descriptive filenames (e.g., `production-sales-share.json`)
+    - Maintain separate profiles for different environments
+    - Document which profile is for which purpose
+    - Keep backups of valid profiles
+  </Accordion>
+  
+  <Accordion title="Lifecycle Management">
+    - Track expiration dates
+    - Set up expiration notifications
+    - Test new profiles before old ones expire
+    - Document token rotation procedures
+    - Maintain audit logs of profile usage
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Protocol Overview" icon="network-wired" href="/concepts/protocol-overview">
+    Understand authentication and the REST protocol
+  </Card>
+  <Card title="Access Modes" icon="key" href="/concepts/access-modes">
+    Learn about URL-based and directory-based access
+  </Card>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Get started using Delta Sharing
+  </Card>
+  <Card title="Client Libraries" icon="book" href="/clients">
+    Explore available client implementations
+  </Card>
+</CardGroup>

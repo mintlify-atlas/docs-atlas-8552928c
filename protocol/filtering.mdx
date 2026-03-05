@@ -1,0 +1,520 @@
+---
+title: Data Filtering
+description: Learn how to filter shared data using SQL expressions and JSON predicates
+---
+
+Delta Sharing supports filtering data at the server side to reduce data transfer and improve query performance. Clients send filtering hints that servers apply on a **best-effort basis**.
+
+<Warning>
+**Best-Effort Filtering**: Servers may return files that don't satisfy the predicates. Clients must always apply predicates to filter the data returned by the server.
+</Warning>
+
+## Overview
+
+Filtering in Delta Sharing operates as hints rather than guarantees:
+
+- **Server behavior**: Attempts to filter files using predicates, but may return additional files
+- **Client responsibility**: Must always apply predicates to returned data
+- **Failure handling**: If the server fails to parse or evaluate a predicate, it may skip it and return all files
+
+<Info>
+Filtering is particularly effective for partitioned tables where predicates match partition columns, enabling efficient file pruning.
+</Info>
+
+---
+
+## SQL Expressions for Filtering
+
+SQL expressions provide a familiar way to express filtering predicates. They are sent as an array of strings in the request body.
+
+### Request Format
+
+<CodeGroup>
+```json Request Body
+{
+  "predicateHints": [
+    "date >= '2021-01-01'",
+    "date <= '2021-01-31'",
+    "country = 'US'"
+  ],
+  "limitHint": 1000
+}
+```
+</CodeGroup>
+
+<ParamField body="predicateHints" type="array[string]" optional>
+  Array of SQL boolean expressions. Expressions are **AND-ed together** (conjunctive).
+</ParamField>
+
+<ParamField body="limitHint" type="integer" optional>
+  Hint indicating how many rows the client plans to read. Server may use this with file statistics to return fewer files.
+</ParamField>
+
+<Note>
+**Deprecation Notice**: `predicateHints` is being deprecated in favor of `jsonPredicateHints` once all implementations migrate to JSON-based filtering.
+</Note>
+
+### Supported Operators
+
+The following comparison operators are supported:
+
+| Operator | Description | Example |
+|----------|-------------|----------|
+| `=` | Equality | `col = 123` |
+| `<>` | Inequality | `col <> 'foo'` |
+| `>` | Greater than | `col > 'foo'` |
+| `<` | Less than | `'foo' < col` |
+| `>=` | Greater or equal | `col >= 123` |
+| `<=` | Less or equal | `123 <= col` |
+| `IS NULL` | Null check | `col IS NULL` |
+| `IS NOT NULL` | Not null check | `col IS NOT NULL` |
+
+### Expression Examples
+
+<CodeGroup>
+```json Date Range
+{
+  "predicateHints": [
+    "date >= '2021-01-01'",
+    "date <= '2021-12-31'"
+  ]
+}
+```
+
+```json Multiple Columns
+{
+  "predicateHints": [
+    "country = 'US'",
+    "age >= 18",
+    "email IS NOT NULL"
+  ]
+}
+```
+
+```json Numeric Comparison
+{
+  "predicateHints": [
+    "price > 100",
+    "quantity <= 1000"
+  ]
+}
+```
+</CodeGroup>
+
+<Warning>
+**Limitations:**
+- Only simple column-to-constant comparisons are supported
+- No support for OR, IN, LIKE, or complex expressions
+- Columns must be compared to literal values, not other columns
+- More operators will be added incrementally in future releases
+</Warning>
+
+---
+
+## JSON Predicates for Filtering
+
+JSON predicates provide a structured, type-safe format for expressing filtering logic. This is the **preferred** method for partition column predicates.
+
+### Request Format
+
+<CodeGroup>
+```json Request Body
+{
+  "jsonPredicateHints": "{\"op\":\"and\",\"children\":[{\"op\":\"equal\",\"children\":[{\"op\":\"column\",\"name\":\"date\",\"valueType\":\"date\"},{\"op\":\"literal\",\"value\":\"2021-04-29\",\"valueType\":\"date\"}]},{\"op\":\"lessThan\",\"children\":[{\"op\":\"column\",\"name\":\"id\",\"valueType\":\"int\"},{\"op\":\"literal\",\"value\":\"25\",\"valueType\":\"int\"}]}]}"
+}
+```
+</CodeGroup>
+
+<ParamField body="jsonPredicateHints" type="string" optional>
+  Serialized JSON string representing a predicate tree. Parse to get the predicate object structure.
+</ParamField>
+
+### Predicate Structure
+
+Each predicate is a JSON object with these fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `op` | string | Operation name (see [Supported Operations](#supported-operations)) |
+| `children` | array | Child operations (empty for leaf operations) |
+| `name` | string | Column name (for `column` operations only) |
+| `value` | string | Literal value (for `literal` operations only) |
+| `valueType` | string | Data type (for `column` and `literal` operations) |
+
+### Supported Operations
+
+<Accordion title="Leaf Operations">
+  **column**
+  
+  Represents a column reference.
+  
+  ```json
+  {
+    "op": "column",
+    "name": "hireDate",
+    "valueType": "date"
+  }
+  ```
+  
+  **literal**
+  
+  Represents a constant value.
+  
+  ```json
+  {
+    "op": "literal",
+    "value": "2021-04-29",
+    "valueType": "date"
+  }
+  ```
+</Accordion>
+
+<Accordion title="Unary Operations">
+  **isNull**
+  
+  Checks if a column is null.
+  
+  ```json
+  {
+    "op": "isNull",
+    "children": [
+      {"op": "column", "name": "email", "valueType": "string"}
+    ]
+  }
+  ```
+  
+  **not**
+  
+  Logical NOT operation.
+  
+  ```json
+  {
+    "op": "not",
+    "children": [
+      {
+        "op": "isNull",
+        "children": [{"op": "column", "name": "id", "valueType": "int"}]
+      }
+    ]
+  }
+  ```
+</Accordion>
+
+<Accordion title="Binary Operations">
+  **equal**
+  
+  Equality check (`=`).
+  
+  ```json
+  {
+    "op": "equal",
+    "children": [
+      {"op": "column", "name": "country", "valueType": "string"},
+      {"op": "literal", "value": "US", "valueType": "string"}
+    ]
+  }
+  ```
+  
+  **lessThan**
+  
+  Less than check (`<`).
+  
+  ```json
+  {
+    "op": "lessThan",
+    "children": [
+      {"op": "column", "name": "age", "valueType": "int"},
+      {"op": "literal", "value": "65", "valueType": "int"}
+    ]
+  }
+  ```
+  
+  **lessThanOrEqual**
+  
+  Less than or equal check (`<=`).
+  
+  **greaterThan**
+  
+  Greater than check (`>`).
+  
+  **greaterThanOrEqual**
+  
+  Greater than or equal check (`>=`).
+</Accordion>
+
+<Accordion title="N-ary Operations">
+  **and**
+  
+  Logical AND operation (requires at least 2 children).
+  
+  ```json
+  {
+    "op": "and",
+    "children": [
+      {
+        "op": "equal",
+        "children": [
+          {"op": "column", "name": "status", "valueType": "string"},
+          {"op": "literal", "value": "active", "valueType": "string"}
+        ]
+      },
+      {
+        "op": "greaterThan",
+        "children": [
+          {"op": "column", "name": "balance", "valueType": "double"},
+          {"op": "literal", "value": "0", "valueType": "double"}
+        ]
+      }
+    ]
+  }
+  ```
+  
+  **or**
+  
+  Logical OR operation (requires at least 2 children).
+  
+  ```json
+  {
+    "op": "or",
+    "children": [
+      {
+        "op": "equal",
+        "children": [
+          {"op": "column", "name": "priority", "valueType": "string"},
+          {"op": "literal", "value": "high", "valueType": "string"}
+        ]
+      },
+      {
+        "op": "equal",
+        "children": [
+          {"op": "column", "name": "priority", "valueType": "string"},
+          {"op": "literal", "value": "urgent", "valueType": "string"}
+        ]
+      }
+    ]
+  }
+  ```
+</Accordion>
+
+### Supported Value Types
+
+These value types are supported in `valueType` fields:
+
+| Type | Description | Example Value |
+|------|-------------|---------------|
+| `bool` | Boolean | `"true"` or `"false"` |
+| `int` | Integer | `"42"` |
+| `long` | Long integer | `"1234567890"` |
+| `string` | String | `"hello"` |
+| `date` | Date | `"2021-04-29"` (yyyy-mm-dd) |
+| `float` | Float | `"3.14"` |
+| `double` | Double | `"3.14159"` |
+| `timestamp` | Timestamp | `"2022-01-01T00:00:00Z"` (ISO 8601) |
+
+<Note>
+All value types are **case-insensitive** when processed by the server.
+</Note>
+
+---
+
+## Complete Examples
+
+### Example 1: Simple Equality
+
+Find records where hire date equals a specific date.
+
+<CodeGroup>
+```json Predicate
+{
+  "op": "equal",
+  "children": [
+    {"op": "column", "name": "hireDate", "valueType": "date"},
+    {"op": "literal", "value": "2021-04-29", "valueType": "date"}
+  ]
+}
+```
+
+```json Request Body
+{
+  "jsonPredicateHints": "{\"op\":\"equal\",\"children\":[{\"op\":\"column\",\"name\":\"hireDate\",\"valueType\":\"date\"},{\"op\":\"literal\",\"value\":\"2021-04-29\",\"valueType\":\"date\"}]}"
+}
+```
+</CodeGroup>
+
+### Example 2: Compound AND Predicate
+
+Find records where hire date equals a date AND id is less than 25.
+
+<CodeGroup>
+```json Predicate
+{
+  "op": "and",
+  "children": [
+    {
+      "op": "equal",
+      "children": [
+        {"op": "column", "name": "hireDate", "valueType": "date"},
+        {"op": "literal", "value": "2021-04-29", "valueType": "date"}
+      ]
+    },
+    {
+      "op": "lessThan",
+      "children": [
+        {"op": "column", "name": "id", "valueType": "int"},
+        {"op": "literal", "value": "25", "valueType": "int"}
+      ]
+    }
+  ]
+}
+```
+</CodeGroup>
+
+### Example 3: NOT NULL Check
+
+Find records where id is not null.
+
+<CodeGroup>
+```json Predicate
+{
+  "op": "not",
+  "children": [
+    {
+      "op": "isNull",
+      "children": [
+        {"op": "column", "name": "id", "valueType": "int"}
+      ]
+    }
+  ]
+}
+```
+</CodeGroup>
+
+### Example 4: Date Range with OR
+
+Find records from Q1 2021 or Q4 2021.
+
+<CodeGroup>
+```json Predicate
+{
+  "op": "or",
+  "children": [
+    {
+      "op": "and",
+      "children": [
+        {
+          "op": "greaterThanOrEqual",
+          "children": [
+            {"op": "column", "name": "date", "valueType": "date"},
+            {"op": "literal", "value": "2021-01-01", "valueType": "date"}
+          ]
+        },
+        {
+          "op": "lessThan",
+          "children": [
+            {"op": "column", "name": "date", "valueType": "date"},
+            {"op": "literal", "value": "2021-04-01", "valueType": "date"}
+          ]
+        }
+      ]
+    },
+    {
+      "op": "and",
+      "children": [
+        {
+          "op": "greaterThanOrEqual",
+          "children": [
+            {"op": "column", "name": "date", "valueType": "date"},
+            {"op": "literal", "value": "2021-10-01", "valueType": "date"}
+          ]
+        },
+        {
+          "op": "lessThan",
+          "children": [
+            {"op": "column", "name": "date", "valueType": "date"},
+            {"op": "literal", "value": "2022-01-01", "valueType": "date"}
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+</CodeGroup>
+
+---
+
+## Combining with Limit Hints
+
+When both `predicateHints`/`jsonPredicateHints` and `limitHint` are present:
+
+1. Server applies predicate filtering first
+2. Server then uses limit hint with file statistics to return fewer files
+3. Client must still apply both predicates and limit to the returned data
+
+<CodeGroup>
+```json Combined Example
+{
+  "jsonPredicateHints": "{\"op\":\"equal\",\"children\":[{\"op\":\"column\",\"name\":\"status\",\"valueType\":\"string\"},{\"op\":\"literal\",\"value\":\"active\",\"valueType\":\"string\"}]}",
+  "limitHint": 1000
+}
+```
+</CodeGroup>
+
+<Info>
+This combination is particularly effective for queries like `SELECT * FROM table WHERE status='active' LIMIT 1000`, where the server can use both hints for optimal file selection.
+</Info>
+
+---
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use JSON Predicates" icon="code">
+    Prefer JSON predicates over SQL expressions for type safety and easier server implementation.
+  </Card>
+  
+  <Card title="Filter on Partitions" icon="layer-group">
+    Predicates on partition columns are most effective, enabling efficient file pruning.
+  </Card>
+  
+  <Card title="Always Filter Client-Side" icon="filter">
+    Never rely solely on server filtering. Always apply predicates to returned data.
+  </Card>
+  
+  <Card title="Use Limit Hints" icon="hashtag">
+    Combine filtering with limit hints to minimize data transfer for top-N queries.
+  </Card>
+</CardGroup>
+
+## Migration Path
+
+<Steps>
+  <Step title="Current State">
+    Using `predicateHints` with SQL expressions
+  </Step>
+  
+  <Step title="Transition">
+    Support both `predicateHints` and `jsonPredicateHints` for backward compatibility
+  </Step>
+  
+  <Step title="Future State">
+    Use only `jsonPredicateHints` once all implementations migrate
+  </Step>
+</Steps>
+
+<Warning>
+The `predicateHints` field will be deprecated once all Delta Sharing clients and servers have migrated to JSON-based filtering.
+</Warning>
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="REST APIs" icon="code" href="/protocol/rest-apis">
+    Learn about Query Table API
+  </Card>
+  <Card title="Response Format" icon="file-code" href="/protocol/response-format">
+    Understand file statistics
+  </Card>
+</CardGroup>

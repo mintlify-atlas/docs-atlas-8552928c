@@ -1,0 +1,427 @@
+---
+title: 'SQL Usage'
+description: 'Query Delta Sharing tables using SQL syntax in Apache Spark'
+---
+
+## Creating Table References
+
+The first step to using Delta Sharing with SQL is creating a table reference using the `deltaSharing` format.
+
+### Basic Syntax
+
+```sql
+CREATE TABLE <table-name> 
+USING deltaSharing 
+LOCATION '<profile-file-path>#<share-name>.<schema-name>.<table-name>';
+```
+
+<Note>
+The `LOCATION` clause combines your profile file path with the fully qualified table name using `#` as a separator.
+</Note>
+
+### Example
+
+```sql
+-- Create a reference to a shared customer table
+CREATE TABLE customers 
+USING deltaSharing 
+LOCATION '/opt/profiles/production.share#sales.crm.customers';
+
+-- Now query it like any other table
+SELECT * FROM customers LIMIT 10;
+```
+
+## Querying Shared Tables
+
+Once you've created a table reference, you can use standard SQL operations.
+
+### SELECT Queries
+
+<Tabs>
+  <Tab title="Basic SELECT">
+    ```sql
+    -- Select all columns
+    SELECT * FROM customers;
+    
+    -- Select specific columns
+    SELECT customer_id, name, email FROM customers;
+    
+    -- Select with aliases
+    SELECT 
+      customer_id AS id,
+      name AS customer_name,
+      email AS contact_email
+    FROM customers;
+    ```
+  </Tab>
+  
+  <Tab title="Filtering">
+    ```sql
+    -- WHERE clause
+    SELECT * FROM customers
+    WHERE country = 'USA' AND status = 'active';
+    
+    -- Date filtering
+    SELECT * FROM customers
+    WHERE created_date >= '2024-01-01'
+      AND created_date < '2024-02-01';
+    
+    -- IN clause
+    SELECT * FROM customers
+    WHERE region IN ('North', 'South', 'East');
+    
+    -- Pattern matching
+    SELECT * FROM customers
+    WHERE email LIKE '%@example.com';
+    ```
+  </Tab>
+  
+  <Tab title="Aggregations">
+    ```sql
+    -- Count records
+    SELECT COUNT(*) as total_customers FROM customers;
+    
+    -- Group by
+    SELECT country, COUNT(*) as customer_count
+    FROM customers
+    GROUP BY country
+    ORDER BY customer_count DESC;
+    
+    -- Multiple aggregations
+    SELECT 
+      region,
+      COUNT(*) as total,
+      COUNT(DISTINCT customer_id) as unique_customers,
+      AVG(order_value) as avg_value
+    FROM customers
+    GROUP BY region;
+    
+    -- Having clause
+    SELECT country, COUNT(*) as count
+    FROM customers
+    GROUP BY country
+    HAVING count > 100;
+    ```
+  </Tab>
+  
+  <Tab title="Sorting">
+    ```sql
+    -- Order by single column
+    SELECT * FROM customers
+    ORDER BY created_date DESC
+    LIMIT 100;
+    
+    -- Order by multiple columns
+    SELECT * FROM customers
+    ORDER BY country ASC, name ASC;
+    
+    -- Top N queries
+    SELECT customer_id, total_purchases
+    FROM customers
+    ORDER BY total_purchases DESC
+    LIMIT 10;
+    ```
+  </Tab>
+</Tabs>
+
+## Table Operations
+
+### Inspecting Table Structure
+
+```sql
+-- View table schema
+DESCRIBE customers;
+
+-- Detailed table information
+DESCRIBE EXTENDED customers;
+
+-- Show table properties
+SHOW TBLPROPERTIES customers;
+```
+
+### Working with Multiple Tables
+
+```sql
+-- Create multiple table references
+CREATE TABLE customers 
+USING deltaSharing 
+LOCATION '/opt/profiles/prod.share#sales.crm.customers';
+
+CREATE TABLE orders 
+USING deltaSharing 
+LOCATION '/opt/profiles/prod.share#sales.transactions.orders';
+
+CREATE TABLE products 
+USING deltaSharing 
+LOCATION '/opt/profiles/prod.share#inventory.catalog.products';
+```
+
+## Joins
+
+Delta Sharing tables can be joined with other tables, including local tables and other shared tables.
+
+<CodeGroup>
+```sql Inner Join
+-- Join two shared tables
+SELECT 
+  c.customer_id,
+  c.name,
+  o.order_id,
+  o.order_date,
+  o.total_amount
+FROM customers c
+INNER JOIN orders o ON c.customer_id = o.customer_id
+WHERE o.order_date >= '2024-01-01';
+```
+
+```sql Left Join
+-- Left join to include all customers
+SELECT 
+  c.customer_id,
+  c.name,
+  COUNT(o.order_id) as order_count,
+  COALESCE(SUM(o.total_amount), 0) as total_spent
+FROM customers c
+LEFT JOIN orders o ON c.customer_id = o.customer_id
+GROUP BY c.customer_id, c.name;
+```
+
+```sql Multiple Joins
+-- Join shared tables with local data
+SELECT 
+  c.name as customer_name,
+  p.product_name,
+  o.quantity,
+  o.total_amount
+FROM customers c
+INNER JOIN orders o ON c.customer_id = o.customer_id
+INNER JOIN products p ON o.product_id = p.product_id
+WHERE o.order_date >= CURRENT_DATE - INTERVAL 30 DAYS;
+```
+</CodeGroup>
+
+## Advanced SQL Patterns
+
+### Subqueries
+
+```sql
+-- Subquery in WHERE clause
+SELECT * FROM customers
+WHERE customer_id IN (
+  SELECT customer_id 
+  FROM orders 
+  WHERE total_amount > 1000
+);
+
+-- Subquery in FROM clause
+SELECT 
+  country,
+  AVG(customer_value) as avg_value
+FROM (
+  SELECT 
+    country,
+    customer_id,
+    SUM(total_amount) as customer_value
+  FROM customers c
+  JOIN orders o ON c.customer_id = o.customer_id
+  GROUP BY country, customer_id
+) customer_totals
+GROUP BY country;
+```
+
+### Common Table Expressions (CTEs)
+
+```sql
+-- Single CTE
+WITH active_customers AS (
+  SELECT * FROM customers
+  WHERE status = 'active'
+    AND last_order_date >= CURRENT_DATE - INTERVAL 90 DAYS
+)
+SELECT country, COUNT(*) as active_count
+FROM active_customers
+GROUP BY country;
+
+-- Multiple CTEs
+WITH 
+customer_stats AS (
+  SELECT 
+    customer_id,
+    COUNT(*) as order_count,
+    SUM(total_amount) as total_spent
+  FROM orders
+  GROUP BY customer_id
+),
+high_value_customers AS (
+  SELECT customer_id
+  FROM customer_stats
+  WHERE total_spent > 10000
+)
+SELECT 
+  c.name,
+  c.email,
+  cs.order_count,
+  cs.total_spent
+FROM customers c
+JOIN high_value_customers hvc ON c.customer_id = hvc.customer_id
+JOIN customer_stats cs ON c.customer_id = cs.customer_id
+ORDER BY cs.total_spent DESC;
+```
+
+### Window Functions
+
+```sql
+-- Rank customers by order value within each country
+SELECT 
+  customer_id,
+  name,
+  country,
+  total_purchases,
+  RANK() OVER (PARTITION BY country ORDER BY total_purchases DESC) as country_rank
+FROM customers
+QUALIFY country_rank <= 10;
+
+-- Running totals
+SELECT 
+  order_date,
+  total_amount,
+  SUM(total_amount) OVER (ORDER BY order_date) as running_total
+FROM orders
+ORDER BY order_date;
+```
+
+## Table Path Variations
+
+Delta Sharing supports various storage systems for profile files:
+
+<CodeGroup>
+```sql Local File System
+CREATE TABLE sales_data 
+USING deltaSharing 
+LOCATION '/home/user/profiles/sales.share#revenue.analytics.daily_sales';
+```
+
+```sql Amazon S3
+CREATE TABLE sales_data 
+USING deltaSharing 
+LOCATION 's3a://my-bucket/profiles/sales.share#revenue.analytics.daily_sales';
+```
+
+```sql Azure Data Lake Storage Gen2
+CREATE TABLE sales_data 
+USING deltaSharing 
+LOCATION 'abfss://container@storage.dfs.core.windows.net/sales.share#revenue.analytics.daily_sales';
+```
+
+```sql Google Cloud Storage
+CREATE TABLE sales_data 
+USING deltaSharing 
+LOCATION 'gs://my-bucket/profiles/sales.share#revenue.analytics.daily_sales';
+```
+</CodeGroup>
+
+<Warning>
+When using cloud storage paths, ensure your Spark cluster has the necessary credentials configured to access the profile files.
+</Warning>
+
+## Creating Views
+
+Create views on top of shared tables for reusable query logic:
+
+```sql
+-- Create a view for active customers
+CREATE VIEW active_customers AS
+SELECT * FROM customers
+WHERE status = 'active'
+  AND last_order_date >= CURRENT_DATE - INTERVAL 90 DAYS;
+
+-- Query the view
+SELECT country, COUNT(*) FROM active_customers GROUP BY country;
+
+-- Create a materialized result
+CREATE TABLE customer_summary AS
+SELECT 
+  country,
+  COUNT(*) as customer_count,
+  AVG(total_purchases) as avg_purchases
+FROM customers
+GROUP BY country;
+```
+
+## Performance Tips
+
+<AccordionGroup>
+  <Accordion title="Select only required columns">
+    ```sql
+    -- Good: Select specific columns
+    SELECT customer_id, name, email FROM customers;
+    
+    -- Avoid: SELECT * when you only need a few columns
+    SELECT * FROM customers;
+    ```
+    
+    Selecting only necessary columns reduces data transfer and improves query performance.
+  </Accordion>
+  
+  <Accordion title="Use filters effectively">
+    ```sql
+    -- Apply filters as early as possible
+    SELECT COUNT(*) FROM customers
+    WHERE created_date >= '2024-01-01'
+      AND country = 'USA';
+    ```
+    
+    Filtering reduces the amount of data processed in subsequent operations.
+  </Accordion>
+  
+  <Accordion title="Cache frequently used tables">
+    ```sql
+    -- Cache a table for multiple queries
+    CACHE TABLE customers;
+    
+    -- Run multiple queries (will use cached data)
+    SELECT COUNT(*) FROM customers;
+    SELECT country, COUNT(*) FROM customers GROUP BY country;
+    
+    -- Clear cache when done
+    UNCACHE TABLE customers;
+    ```
+  </Accordion>
+  
+  <Accordion title="Limit result sets during exploration">
+    ```sql
+    -- Use LIMIT when exploring data
+    SELECT * FROM customers LIMIT 100;
+    
+    -- Sample data for analysis
+    SELECT * FROM customers TABLESAMPLE (10 PERCENT);
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Temporary Tables
+
+Create temporary table references that only exist for your session:
+
+```sql
+-- Create a temporary table reference
+CREATE TEMP VIEW temp_customers 
+USING deltaSharing 
+AS SELECT * FROM deltaSharing.`/opt/profiles/prod.share#sales.crm.customers`;
+
+-- Use in queries
+SELECT * FROM temp_customers WHERE country = 'USA';
+
+-- Temporary table is automatically dropped when session ends
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Streaming" icon="water" href="/spark/streaming">
+    Stream changes from shared tables in real-time
+  </Card>
+  <Card title="Change Data Feed" icon="timeline" href="/spark/change-data-feed">
+    Query historical changes to shared tables
+  </Card>
+</CardGroup>

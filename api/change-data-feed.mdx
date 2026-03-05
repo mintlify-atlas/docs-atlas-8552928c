@@ -1,0 +1,389 @@
+---
+title: Read Change Data Feed
+description: Query row-level changes between table versions
+---
+
+This API returns change data feed (CDF) information, representing row-level changes between versions of a Delta table. It records change data for UPDATE, DELETE, and MERGE operations.
+
+## Overview
+
+Change Data Feed provides three metadata columns in addition to table data:
+
+- `_change_type` (String): The type of change - `insert`, `update_preimage`, `update_postimage`, or `delete`
+- `_commit_version` (Long): The table version containing the change
+- `_commit_timestamp` (Long): Unix timestamp (milliseconds) when the change was committed
+
+## Request
+
+<ParamField path="method" type="string" required>
+  GET
+</ParamField>
+
+<ParamField path="url" type="string" required>
+  `{prefix}/shares/{share}/schemas/{schema}/tables/{table}/changes`
+</ParamField>
+
+### Headers
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token for authentication
+  ```
+  Authorization: Bearer {token}
+  ```
+</ParamField>
+
+<ParamField header="delta-sharing-capabilities" type="string">
+  Optional capabilities header for advanced features:
+  ```
+  delta-sharing-capabilities: responseformat=delta;readerfeatures=deletionvectors
+  ```
+  
+  See [Delta Sharing Capabilities](/protocol/overview#delta-sharing-capabilities) for details.
+</ParamField>
+
+### URL Parameters
+
+<ParamField path="share" type="string" required>
+  The share name to query. This parameter is case-insensitive.
+</ParamField>
+
+<ParamField path="schema" type="string" required>
+  The schema name to query. This parameter is case-insensitive.
+</ParamField>
+
+<ParamField path="table" type="string" required>
+  The table name to query. This parameter is case-insensitive.
+</ParamField>
+
+### Query Parameters
+
+<Note>
+  At least one of `startingVersion` or `startingTimestamp` must be provided.
+</Note>
+
+<ParamField query="startingVersion" type="Long">
+  The starting version of the query (inclusive). Either this or `startingTimestamp` is required.
+</ParamField>
+
+<ParamField query="startingTimestamp" type="String">
+  The starting timestamp in ISO8601 format (UTC timezone), e.g., `2022-01-01T00:00:00Z`. Will be converted to a version created at or after this timestamp.
+</ParamField>
+
+<ParamField query="endingVersion" type="Long">
+  The ending version of the query (inclusive). If not provided, uses the latest table version.
+</ParamField>
+
+<ParamField query="endingTimestamp" type="String">
+  The ending timestamp in ISO8601 format (UTC timezone). Will be converted to a version created at or before this timestamp.
+</ParamField>
+
+<ParamField query="includeHistoricalMetadata" type="Boolean">
+  If true, return historical metadata seen in the delta log. Useful for streaming clients to check schema compatibility.
+  
+  Default: `false`
+</ParamField>
+
+## Response
+
+### Headers
+
+<ResponseField name="Content-Type" type="string">
+  ```
+  Content-Type: application/x-ndjson; charset=utf-8
+  ```
+</ResponseField>
+
+<ResponseField name="Delta-Table-Version" type="Long">
+  The starting version of files in the response
+</ResponseField>
+
+### Response Body
+
+The response is newline-delimited JSON (NDJSON) with the following structure:
+
+<ResponseField name="protocol" type="object" required>
+  First line: Protocol version information
+  
+  ```json
+  {
+    "protocol": {
+      "minReaderVersion": 1
+    }
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="metaData" type="object" required>
+  Second line: Table metadata (current and optionally historical if `includeHistoricalMetadata=true`)
+  
+  <Expandable title="Metadata Fields">
+    <ResponseField name="id" type="string">
+      Table UUID
+    </ResponseField>
+    
+    <ResponseField name="format" type="object">
+      File format (e.g., `{"provider": "parquet"}`)
+    </ResponseField>
+    
+    <ResponseField name="schemaString" type="string">
+      JSON-encoded table schema
+    </ResponseField>
+    
+    <ResponseField name="partitionColumns" type="array">
+      Partition column names
+    </ResponseField>
+    
+    <ResponseField name="configuration" type="object">
+      Table configuration (should include `{"enableChangeDataFeed": "true"}`)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="add" type="object">
+  Change data: File additions
+  
+  <Expandable title="Add Fields">
+    <ResponseField name="url" type="string">
+      Pre-signed URL for the added file
+    </ResponseField>
+    
+    <ResponseField name="id" type="string">
+      Unique file identifier
+    </ResponseField>
+    
+    <ResponseField name="partitionValues" type="object">
+      Partition column values
+    </ResponseField>
+    
+    <ResponseField name="size" type="Long">
+      File size in bytes
+    </ResponseField>
+    
+    <ResponseField name="stats" type="string">
+      JSON-encoded file statistics
+    </ResponseField>
+    
+    <ResponseField name="timestamp" type="Long">
+      Commit timestamp in milliseconds
+    </ResponseField>
+    
+    <ResponseField name="version" type="Long">
+      Table version for this change
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="cdf" type="object">
+  Change data feed files (changes stored in `_change_data` directory)
+  
+  <Expandable title="CDF Fields">
+    <ResponseField name="url" type="string">
+      Pre-signed URL for the CDF file
+    </ResponseField>
+    
+    <ResponseField name="id" type="string">
+      Unique file identifier
+    </ResponseField>
+    
+    <ResponseField name="partitionValues" type="object">
+      Partition column values
+    </ResponseField>
+    
+    <ResponseField name="size" type="Long">
+      File size in bytes
+    </ResponseField>
+    
+    <ResponseField name="timestamp" type="Long">
+      Commit timestamp in milliseconds
+    </ResponseField>
+    
+    <ResponseField name="version" type="Long">
+      Table version for this change
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="remove" type="object">
+  Change data: File removals
+  
+  <Expandable title="Remove Fields">
+    <ResponseField name="url" type="string">
+      Pre-signed URL for the removed file
+    </ResponseField>
+    
+    <ResponseField name="id" type="string">
+      Unique file identifier
+    </ResponseField>
+    
+    <ResponseField name="partitionValues" type="object">
+      Partition column values
+    </ResponseField>
+    
+    <ResponseField name="size" type="Long">
+      File size in bytes
+    </ResponseField>
+    
+    <ResponseField name="timestamp" type="Long">
+      Commit timestamp in milliseconds
+    </ResponseField>
+    
+    <ResponseField name="version" type="Long">
+      Table version for this change
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Example Request
+
+<CodeGroup>
+```bash cURL
+curl -X GET \
+  '{prefix}/shares/share_name/schemas/schema_name/tables/table_name/changes?startingVersion=0&endingVersion=2' \
+  -H 'Authorization: Bearer {token}'
+```
+
+```python Python
+import requests
+import json
+
+url = "{prefix}/shares/share_name/schemas/schema_name/tables/table_name/changes"
+headers = {
+    "Authorization": "Bearer {token}"
+}
+params = {
+    "startingVersion": 0,
+    "endingVersion": 2
+}
+
+response = requests.get(url, headers=headers, params=params)
+
+# Process NDJSON response
+for line in response.iter_lines():
+    if line:
+        change = json.loads(line)
+        print(change)
+```
+
+```javascript JavaScript
+const response = await fetch(
+  '{prefix}/shares/share_name/schemas/schema_name/tables/table_name/changes?startingVersion=0&endingVersion=2',
+  {
+    method: 'GET',
+    headers: {
+      'Authorization': 'Bearer {token}'
+    }
+  }
+);
+
+const text = await response.text();
+const changes = text.split('\n')
+  .filter(line => line.trim())
+  .map(line => JSON.parse(line));
+
+changes.forEach(change => console.log(change));
+```
+</CodeGroup>
+
+## Example Response
+
+```
+HTTP/2 200
+content-type: application/x-ndjson; charset=utf-8
+delta-table-version: 0
+```
+
+```json
+{"protocol":{"minReaderVersion":1}}
+{"metaData":{"id":"f8d5c169-3d01-4ca3-ad9e-7dc3355aedb2","format":{"provider":"parquet"},"schemaString":"{\"type\":\"struct\",\"fields\":[{\"name\":\"eventTime\",\"type\":\"timestamp\",\"nullable\":true,\"metadata\":{}},{\"name\":\"date\",\"type\":\"date\",\"nullable\":true,\"metadata\":{}}]}","partitionColumns":["date"],"configuration":{"enableChangeDataFeed":"true"}}}
+{"add":{"url":"https://<s3-bucket-name>.s3.us-west-2.amazonaws.com/delta-exchange-test/table_cdf/date%3D2021-04-28/part-00000-8b0086f2.parquet?...","id":"8b0086f2-7b27-4935-ac5a-8ed6215a6640","partitionValues":{"date":"2021-04-28"},"size":573,"stats":"{\"numRecords\":1,\"minValues\":{\"eventTime\":\"2021-04-28T23:33:57.955Z\"},\"maxValues\":{\"eventTime\":\"2021-04-28T23:33:57.955Z\"},\"nullCount\":{\"eventTime\":0}}","timestamp":1652140000000,"version":0}}
+{"cdf":{"url":"https://<s3-bucket-name>.s3.us-west-2.amazonaws.com/delta-exchange-test/table_cdf/_change_data/date%3D2021-04-28/part-00000-591723a8.parquet?...","id":"591723a8-6a27-4240-a90e-57426f4736d2","partitionValues":{"date":"2021-04-28"},"size":689,"timestamp":1652141000000,"version":1}}
+{"remove":{"url":"https://<s3-bucket-name>.s3.us-west-2.amazonaws.com/delta-exchange-test/table_cdf/date%3D2021-04-28/part-00000-8b0086f2.parquet?...","id":"8b0086f2-7b27-4935-ac5a-8ed6215a6640","partitionValues":{"date":"2021-04-28"},"size":573,"timestamp":1652142000000,"version":2}}
+```
+
+## Using Timestamps
+
+<CodeGroup>
+```bash Version-based Query
+curl -X GET \
+  '{prefix}/shares/share/schemas/schema/tables/table/changes?startingVersion=5&endingVersion=10' \
+  -H 'Authorization: Bearer {token}'
+```
+
+```bash Timestamp-based Query
+curl -X GET \
+  '{prefix}/shares/share/schemas/schema/tables/table/changes?startingTimestamp=2022-01-01T00:00:00Z&endingTimestamp=2022-01-31T23:59:59Z' \
+  -H 'Authorization: Bearer {token}'
+```
+</CodeGroup>
+
+## Error Responses
+
+<Expandable title="400 - Bad Request">
+  The request is malformed (e.g., missing required start parameter).
+  
+  ```json
+  {
+    "errorCode": "string",
+    "message": "string"
+  }
+  ```
+</Expandable>
+
+<Expandable title="401 - Unauthorized">
+  The bearer token is missing or incorrect.
+  
+  ```json
+  {
+    "errorCode": "string",
+    "message": "string"
+  }
+  ```
+</Expandable>
+
+<Expandable title="403 - Forbidden">
+  The request is forbidden from being fulfilled.
+  
+  ```json
+  {
+    "errorCode": "string",
+    "message": "string"
+  }
+  ```
+</Expandable>
+
+<Expandable title="404 - Not Found">
+  The requested resource does not exist.
+  
+  ```json
+  {
+    "errorCode": "string",
+    "message": "string"
+  }
+  ```
+</Expandable>
+
+<Expandable title="500 - Internal Server Error">
+  The request is not handled correctly due to a server error.
+  
+  ```json
+  {
+    "errorCode": "string",
+    "message": "string"
+  }
+  ```
+</Expandable>
+
+## Change Types
+
+<Note>
+  The `_change_type` column in CDF files indicates the type of operation:
+  
+  - **insert**: New row added to the table
+  - **update_preimage**: Row values before an update
+  - **update_postimage**: Row values after an update  
+  - **delete**: Row removed from the table
+</Note>
+
+<Note>
+  Change Data Feed must be enabled on the table (`enableChangeDataFeed = true` in table configuration) for this API to work.
+</Note>

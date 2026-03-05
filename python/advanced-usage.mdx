@@ -1,0 +1,702 @@
+---
+title: Advanced Usage
+description: Advanced features and optimization techniques for the Python Connector
+---
+
+## Profile File Paths
+
+The Delta Sharing Python Connector supports multiple ways to specify profile file paths, enabling flexible deployment scenarios.
+
+### FSSPEC Support
+
+Profile paths for `SharingClient` and `load_as_pandas` support any URL format recognized by [FSSPEC](https://filesystem-spec.readthedocs.io/en/latest/index.html) (Filesystem Spec).
+
+<Accordion title="What is FSSPEC?">
+  FSSPEC is a Python library that provides a unified interface to access different filesystems. It allows you to use the same code to work with local files, cloud storage (S3, Azure, GCS), HTTP endpoints, and more.
+</Accordion>
+
+#### Local File System
+
+```python
+import delta_sharing
+
+# Absolute path
+client = delta_sharing.SharingClient("/home/user/profiles/production.share")
+
+# Relative path
+client = delta_sharing.SharingClient("./profiles/production.share")
+```
+
+#### Amazon S3
+
+```python
+# S3 path (requires s3fs: pip install delta-sharing[s3])
+profile_path = "s3://my-bucket/profiles/production.share"
+client = delta_sharing.SharingClient(profile_path)
+
+# Load table with S3 profile
+table_url = f"{profile_path}#my_share.my_schema.my_table"
+df = delta_sharing.load_as_pandas(table_url)
+```
+
+<Note>
+  Install S3 support with: `pip install delta-sharing[s3]`
+</Note>
+
+#### Azure Blob Storage
+
+```python
+# Azure Blob Storage (requires adlfs: pip install delta-sharing[abfs])
+profile_path = "abfs://container@account.dfs.core.windows.net/profiles/production.share"
+client = delta_sharing.SharingClient(profile_path)
+```
+
+<Note>
+  Install Azure Blob Storage support with: `pip install delta-sharing[abfs]`
+</Note>
+
+#### Google Cloud Storage
+
+```python
+# GCS path (requires gcsfs: pip install delta-sharing[gcs])
+profile_path = "gs://my-bucket/profiles/production.share"
+client = delta_sharing.SharingClient(profile_path)
+```
+
+<Note>
+  Install GCS support with: `pip install delta-sharing[gcs]`
+</Note>
+
+### DBFS Support
+
+When using Databricks File System (DBFS), you can access profile files using the `/dbfs/` prefix to treat them as local files:
+
+```python
+import delta_sharing
+
+# DBFS path accessed as local file
+profile_path = "/dbfs/mnt/profiles/production.share"
+client = delta_sharing.SharingClient(profile_path)
+
+# Construct table URL
+table_url = f"{profile_path}#my_share.my_schema.my_table"
+df = delta_sharing.load_as_pandas(table_url)
+```
+
+<Warning>
+  The `/dbfs/` prefix works for `SharingClient` and `load_as_pandas`, but `load_as_spark` requires Hadoop FileSystem-compatible paths (e.g., `dbfs:/mnt/profiles/production.share`).
+</Warning>
+
+### Spark Profile Paths
+
+For `load_as_spark` and `load_table_changes_as_spark`, profile paths must be compatible with Hadoop FileSystem:
+
+```python
+import delta_sharing
+
+# Hadoop-compatible paths for Spark
+table_url = "s3a://my-bucket/profile.share#my_share.my_schema.my_table"
+df = delta_sharing.load_as_spark(table_url)
+
+# DBFS path for Spark
+table_url = "dbfs:/mnt/profiles/production.share#my_share.my_schema.my_table"
+df = delta_sharing.load_as_spark(table_url)
+```
+
+<Note>
+  Use `s3a://` (not `s3://`) for S3 paths with Spark, and `dbfs:/` (not `/dbfs/`) for DBFS paths.
+</Note>
+
+---
+
+## JSON Predicate Hints
+
+Predicate hints allow you to push down filters to the Delta Sharing server, reducing the amount of data transferred and improving query performance.
+
+### Predicate Format
+
+Predicates are specified as JSON strings following the [Delta Sharing Protocol specification](https://github.com/delta-io/delta-sharing/blob/main/PROTOCOL.md#json-predicates-for-filtering).
+
+### Basic Predicates
+
+#### Equality
+
+```python
+import delta_sharing
+
+# Filter where country = 'USA'
+predicate = '''{
+  "op": "equal",
+  "children": [
+    {"op": "column", "name": "country", "valueType": "string"},
+    {"op": "literal", "value": "USA", "valueType": "string"}
+  ]
+}'''
+
+df = delta_sharing.load_as_pandas(
+    table_url,
+    jsonPredicateHints=predicate
+)
+```
+
+#### Less Than / Greater Than
+
+```python
+# Filter where age > 21
+predicate = '''{
+  "op": "greaterThan",
+  "children": [
+    {"op": "column", "name": "age", "valueType": "int"},
+    {"op": "literal", "value": "21", "valueType": "int"}
+  ]
+}'''
+
+df = delta_sharing.load_as_pandas(
+    table_url,
+    jsonPredicateHints=predicate
+)
+```
+
+#### IS NULL
+
+```python
+# Filter where email is null
+predicate = '''{
+  "op": "isNull",
+  "children": [
+    {"op": "column", "name": "email", "valueType": "string"}
+  ]
+}'''
+
+df = delta_sharing.load_as_pandas(
+    table_url,
+    jsonPredicateHints=predicate
+)
+```
+
+### Composite Predicates
+
+#### AND
+
+```python
+# Filter where country = 'USA' AND age > 21
+predicate = '''{
+  "op": "and",
+  "children": [
+    {
+      "op": "equal",
+      "children": [
+        {"op": "column", "name": "country", "valueType": "string"},
+        {"op": "literal", "value": "USA", "valueType": "string"}
+      ]
+    },
+    {
+      "op": "greaterThan",
+      "children": [
+        {"op": "column", "name": "age", "valueType": "int"},
+        {"op": "literal", "value": "21", "valueType": "int"}
+      ]
+    }
+  ]
+}'''
+
+df = delta_sharing.load_as_pandas(
+    table_url,
+    jsonPredicateHints=predicate
+)
+```
+
+#### OR
+
+```python
+# Filter where country = 'USA' OR country = 'Canada'
+predicate = '''{
+  "op": "or",
+  "children": [
+    {
+      "op": "equal",
+      "children": [
+        {"op": "column", "name": "country", "valueType": "string"},
+        {"op": "literal", "value": "USA", "valueType": "string"}
+      ]
+    },
+    {
+      "op": "equal",
+      "children": [
+        {"op": "column", "name": "country", "valueType": "string"},
+        {"op": "literal", "value": "Canada", "valueType": "string"}
+      ]
+    }
+  ]
+}'''
+
+df = delta_sharing.load_as_pandas(
+    table_url,
+    jsonPredicateHints=predicate
+)
+```
+
+### Date and Timestamp Predicates
+
+```python
+# Filter where hire_date = '2021-04-29'
+predicate = '''{
+  "op": "equal",
+  "children": [
+    {"op": "column", "name": "hire_date", "valueType": "date"},
+    {"op": "literal", "value": "2021-04-29", "valueType": "date"}
+  ]
+}'''
+
+df = delta_sharing.load_as_pandas(
+    table_url,
+    jsonPredicateHints=predicate
+)
+```
+
+### Supported Operators
+
+<AccordionGroup>
+  <Accordion title="Comparison Operators">
+    - `equal`: Equality comparison
+    - `lessThan`: Less than
+    - `lessThanOrEqual`: Less than or equal
+    - `greaterThan`: Greater than
+    - `greaterThanOrEqual`: Greater than or equal
+  </Accordion>
+
+  <Accordion title="Logical Operators">
+    - `and`: Logical AND
+    - `or`: Logical OR
+    - `not`: Logical NOT
+  </Accordion>
+
+  <Accordion title="Null Operators">
+    - `isNull`: Check if value is NULL
+    - `isNotNull`: Check if value is NOT NULL
+  </Accordion>
+</AccordionGroup>
+
+### Supported Value Types
+
+- `bool`: Boolean values
+- `int`: Integer values
+- `long`: Long integer values
+- `float`: Floating-point values
+- `double`: Double-precision floating-point values
+- `string`: String values
+- `date`: Date values (format: YYYY-MM-DD)
+- `timestamp`: Timestamp values (format: YYYY-MM-DDThh:mm:ss[.SSS]Z)
+
+<Warning>
+  Predicate hints are optimization hints only. The server may return more data than specified by the predicate, so additional client-side filtering may be necessary for correctness.
+</Warning>
+
+---
+
+## Memory Optimization with convert_in_batches
+
+For large tables, the `convert_in_batches` parameter can significantly reduce memory consumption by converting Parquet files to pandas DataFrames one batch at a time instead of one file at a time.
+
+### When to Use
+
+Use `convert_in_batches=True` when:
+- Working with large tables that don't fit comfortably in memory
+- Individual Parquet files are large
+- You want to reduce peak memory usage
+- Query performance is less critical than memory usage
+
+### Trade-offs
+
+**Advantages:**
+- Lower peak memory usage
+- Prevents out-of-memory errors on constrained systems
+- Better for parquet format queries
+
+**Disadvantages:**
+- May take longer to complete
+- May download more data due to batch overhead
+- Slightly more CPU overhead for batch processing
+
+### Example Usage
+
+```python
+import delta_sharing
+
+# Load large table with batch conversion
+df = delta_sharing.load_as_pandas(
+    table_url,
+    convert_in_batches=True
+)
+
+# Combine with other optimizations
+df = delta_sharing.load_as_pandas(
+    table_url,
+    use_delta_format=True,
+    convert_in_batches=True,
+    jsonPredicateHints=my_predicate
+)
+```
+
+### With Change Data Feed
+
+```python
+# Load large CDF query with batch conversion
+changes = delta_sharing.load_table_changes_as_pandas(
+    table_url,
+    starting_version=0,
+    ending_version=1000,
+    convert_in_batches=True,
+    use_delta_format=True
+)
+```
+
+---
+
+## Delta Format vs Parquet Format
+
+Delta Sharing supports two data formats for transferring table data: Delta format and Parquet format.
+
+### Format Comparison
+
+| Feature | Delta Format | Parquet Format |
+|---------|-------------|----------------|
+| **Performance** | Faster for most queries | Slower for large tables |
+| **Predicate Pushdown** | Excellent | Limited |
+| **Server Support** | Requires Delta format support | Universal |
+| **Data Transfer** | More efficient | Less efficient |
+| **Compatibility** | Newer feature | Widely supported |
+
+### Using Delta Format
+
+```python
+import delta_sharing
+
+# Explicitly use Delta format
+df = delta_sharing.load_as_pandas(
+    table_url,
+    use_delta_format=True
+)
+
+# Delta format with predicates (best performance)
+df = delta_sharing.load_as_pandas(
+    table_url,
+    use_delta_format=True,
+    jsonPredicateHints=my_predicate
+)
+```
+
+### Automatic Format Selection
+
+If `use_delta_format` is not specified, the connector automatically selects the best format based on table metadata:
+
+```python
+# Connector chooses format automatically
+df = delta_sharing.load_as_pandas(table_url)
+```
+
+### Format for Change Data Feed
+
+For Change Data Feed queries, Delta format is recommended:
+
+```python
+# CDF with Delta format for best performance
+changes = delta_sharing.load_table_changes_as_pandas(
+    table_url,
+    starting_version=0,
+    ending_version=100,
+    use_delta_format=True
+)
+```
+
+<Note>
+  When using Delta format for CDF, the connector properly handles metadata changes by replaying the Delta log, ensuring data consistency across versions.
+</Note>
+
+---
+
+## Working with DeltaSharingProfile Objects
+
+Instead of using profile file paths, you can create and use `DeltaSharingProfile` objects directly for more control over authentication.
+
+### Reading from File
+
+```python
+from delta_sharing.protocol import DeltaSharingProfile
+
+# Read profile from file
+profile = DeltaSharingProfile.read_from_file("/path/to/profile.share")
+
+# Use with SharingClient
+client = delta_sharing.SharingClient(profile)
+
+# Use with load_as_spark
+df = delta_sharing.load_as_spark(
+    "my_share.my_schema.my_table",
+    delta_sharing_profile=profile
+)
+```
+
+### Profile Authentication Types
+
+The connector supports multiple authentication types:
+
+#### Bearer Token (Version 1)
+
+```json
+{
+  "shareCredentialsVersion": 1,
+  "endpoint": "https://sharing.example.com/delta-sharing/",
+  "bearerToken": "your-token-here",
+  "expirationTime": "2024-12-31T23:59:59Z"
+}
+```
+
+#### Bearer Token (Version 2)
+
+```json
+{
+  "shareCredentialsVersion": 2,
+  "type": "bearer_token",
+  "endpoint": "https://sharing.example.com/delta-sharing/",
+  "bearerToken": "your-token-here",
+  "expirationTime": "2024-12-31T23:59:59Z"
+}
+```
+
+#### OAuth Client Credentials
+
+```json
+{
+  "shareCredentialsVersion": 2,
+  "type": "oauth_client_credentials",
+  "endpoint": "https://sharing.example.com/delta-sharing/",
+  "tokenEndpoint": "https://auth.example.com/oauth/token",
+  "clientId": "your-client-id",
+  "clientSecret": "your-client-secret",
+  "scope": "delta-sharing"
+}
+```
+
+#### Basic Authentication
+
+```json
+{
+  "shareCredentialsVersion": 2,
+  "type": "basic",
+  "endpoint": "https://sharing.example.com/delta-sharing/",
+  "username": "your-username",
+  "password": "your-password"
+}
+```
+
+### Programmatic Profile Creation
+
+```python
+from delta_sharing.protocol import DeltaSharingProfile
+
+# Create profile programmatically
+profile = DeltaSharingProfile(
+    share_credentials_version=2,
+    type="bearer_token",
+    endpoint="https://sharing.example.com/delta-sharing",
+    bearer_token="your-token-here",
+    expiration_time="2024-12-31T23:59:59Z"
+)
+
+# Use with connector
+client = delta_sharing.SharingClient(profile)
+```
+
+---
+
+## Performance Best Practices
+
+### 1. Use Delta Format When Possible
+
+```python
+# Best performance for most queries
+df = delta_sharing.load_as_pandas(
+    table_url,
+    use_delta_format=True
+)
+```
+
+### 2. Apply Predicate Hints
+
+```python
+# Reduce data transfer with predicates
+df = delta_sharing.load_as_pandas(
+    table_url,
+    use_delta_format=True,
+    jsonPredicateHints=my_predicate
+)
+```
+
+### 3. Use Limits for Exploration
+
+```python
+# Sample data before loading full table
+sample = delta_sharing.load_as_pandas(table_url, limit=1000)
+print(sample.describe())
+
+# Load full table only if needed
+if looks_good(sample):
+    df = delta_sharing.load_as_pandas(table_url)
+```
+
+### 4. Enable Batch Conversion for Large Tables
+
+```python
+# Reduce memory usage for large tables
+df = delta_sharing.load_as_pandas(
+    table_url,
+    convert_in_batches=True
+)
+```
+
+### 5. Cache Profile Files Locally
+
+```python
+# Avoid repeated S3 reads of profile files
+import shutil
+import delta_sharing
+
+# Download profile once
+with fsspec.open("s3://bucket/profile.share", "rb") as src:
+    with open("/tmp/profile.share", "wb") as dst:
+        shutil.copyfileobj(src, dst)
+
+# Use local copy
+profile = delta_sharing.DeltaSharingProfile.read_from_file("/tmp/profile.share")
+client = delta_sharing.SharingClient(profile)
+```
+
+### 6. Reuse SharingClient Instances
+
+```python
+# Create client once
+client = delta_sharing.SharingClient(profile_file)
+
+# Reuse for multiple operations
+tables = client.list_all_tables()
+for table in tables:
+    # Client connection is reused
+    print(table.name)
+```
+
+---
+
+## Error Handling
+
+### Common Errors and Solutions
+
+```python
+import delta_sharing
+from requests.exceptions import HTTPError
+
+try:
+    df = delta_sharing.load_as_pandas(table_url)
+except HTTPError as e:
+    if e.response.status_code == 401:
+        print("Authentication failed. Check your bearer token.")
+    elif e.response.status_code == 403:
+        print("Access denied. You don't have permission for this table.")
+    elif e.response.status_code == 404:
+        print("Table not found. Check the table URL.")
+    else:
+        print(f"HTTP error: {e}")
+except ValueError as e:
+    print(f"Invalid URL or parameters: {e}")
+except Exception as e:
+    print(f"Unexpected error: {e}")
+```
+
+### Validating Profile Files
+
+```python
+from delta_sharing.protocol import DeltaSharingProfile
+
+try:
+    profile = DeltaSharingProfile.read_from_file(profile_path)
+    print(f"Profile valid. Endpoint: {profile.endpoint}")
+except FileNotFoundError:
+    print(f"Profile file not found: {profile_path}")
+except ValueError as e:
+    print(f"Invalid profile format: {e}")
+```
+
+---
+
+## Complete Advanced Example
+
+```python
+import delta_sharing
+from delta_sharing.protocol import DeltaSharingProfile
+import json
+
+# Load profile from S3
+profile_path = "s3://my-bucket/profiles/production.share"
+profile = DeltaSharingProfile.read_from_file(profile_path)
+
+# Create client
+client = delta_sharing.SharingClient(profile)
+
+# Explore available tables
+print("Available tables:")
+tables = client.list_all_tables()
+for table in tables:
+    print(f"  {table.share}.{table.schema}.{table.name}")
+
+# Select a table
+table_url = f"{profile_path}#{tables[0].share}.{tables[0].schema}.{tables[0].name}"
+
+# Get table metadata
+metadata = delta_sharing.get_table_metadata(table_url)
+print(f"\nTable: {metadata.name}")
+print(f"Format: {metadata.format}")
+print(f"Partition columns: {metadata.partition_columns}")
+
+# Build predicate
+predicate = json.dumps({
+    "op": "and",
+    "children": [
+        {
+            "op": "greaterThan",
+            "children": [
+                {"op": "column", "name": "timestamp", "valueType": "timestamp"},
+                {"op": "literal", "value": "2024-01-01T00:00:00Z", "valueType": "timestamp"}
+            ]
+        },
+        {
+            "op": "equal",
+            "children": [
+                {"op": "column", "name": "status", "valueType": "string"},
+                {"op": "literal", "value": "active", "valueType": "string"}
+            ]
+        }
+    ]
+})
+
+# Load with optimizations
+df = delta_sharing.load_as_pandas(
+    table_url,
+    use_delta_format=True,
+    jsonPredicateHints=predicate,
+    convert_in_batches=True
+)
+
+print(f"\nLoaded {len(df)} rows matching predicate")
+print(df.head())
+
+# Query change data feed
+changes = delta_sharing.load_table_changes_as_pandas(
+    table_url,
+    starting_version=0,
+    use_delta_format=True,
+    convert_in_batches=True
+)
+
+print(f"\nTotal changes: {len(changes)}")
+print(changes['_change_type'].value_counts())
+```

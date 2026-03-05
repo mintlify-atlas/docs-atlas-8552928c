@@ -1,0 +1,177 @@
+---
+title: Get Share
+description: Retrieve metadata for a specific share
+---
+
+This API returns detailed metadata for a specific share, including its name, identifier, display name, and custom properties.
+
+## Request
+
+<ParamField path="method" type="string" required>
+  GET
+</ParamField>
+
+<ParamField path="url" type="string" required>
+  `{prefix}/shares/{share}`
+</ParamField>
+
+### Headers
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token for authentication
+  ```
+  Authorization: Bearer {token}
+  ```
+</ParamField>
+
+### URL Parameters
+
+<ParamField path="share" type="string" required>
+  The share name to query. This parameter is case-insensitive.
+</ParamField>
+
+## Response
+
+<ResponseField name="share" type="object" required>
+  The share metadata object.
+  
+  <Expandable title="Share Properties">
+    <ResponseField name="name" type="string" required>
+      Share name (case-insensitive). Must not exceed 255 characters.
+    </ResponseField>
+    
+    <ResponseField name="id" type="string">
+      Unique identifier for the share. Should be immutable through the share's lifecycle. Format recommendation: UUID.
+    </ResponseField>
+    
+    <ResponseField name="displayName" type="string">
+      Human-readable share name to display to users. Must not exceed 255 characters.
+    </ResponseField>
+    
+    <ResponseField name="comment" type="string">
+      Description of the share. Should not exceed 65536 characters.
+    </ResponseField>
+    
+    <ResponseField name="properties" type="Map<String, String>">
+      Optional key-value metadata pairs.
+      - Keys must not exceed 255 characters
+      - Values must not exceed 1000 characters
+      - Maximum 50 key-value pairs
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Example Request
+
+<CodeGroup>
+```bash cURL
+curl -X GET \
+  '{prefix}/shares/vaccine_share' \
+  -H 'Authorization: Bearer {token}'
+```
+
+```python Python
+import requests
+
+url = "{prefix}/shares/vaccine_share"
+headers = {
+    "Authorization": "Bearer {token}"
+}
+
+response = requests.get(url, headers=headers)
+share = response.json()
+```
+
+```javascript JavaScript
+const response = await fetch(
+  '{prefix}/shares/vaccine_share',
+  {
+    method: 'GET',
+    headers: {
+      'Authorization': 'Bearer {token}'
+    }
+  }
+);
+
+const share = await response.json();
+```
+</CodeGroup>
+
+## Example Response
+
+```json
+{
+  "share": {
+    "name": "vaccine_share",
+    "id": "edacc4a7-6600-4fbb-85f3-a62a5ce6761f",
+    "displayName": "Vaccine Share",
+    "comment": "A sample share containing vaccine-related datasets",
+    "properties": {
+      "owner": "vaccine-team",
+      "region": "us-west-2",
+      "created_date": "2024-01-15"
+    }
+  }
+}
+```
+
+## Error Responses
+
+<Expandable title="400 - Bad Request">
+  The request is malformed.
+  
+  ```json
+  {
+    "errorCode": "string",
+    "message": "string"
+  }
+  ```
+</Expandable>
+
+<Expandable title="401 - Unauthorized">
+  The bearer token is missing or incorrect.
+  
+  ```json
+  {
+    "errorCode": "string",
+    "message": "string"
+  }
+  ```
+</Expandable>
+
+<Expandable title="403 - Forbidden">
+  The request is forbidden from being fulfilled.
+  
+  ```json
+  {
+    "errorCode": "string",
+    "message": "string"
+  }
+  ```
+</Expandable>
+
+<Expandable title="404 - Not Found">
+  The requested share does not exist.
+  
+  ```json
+  {
+    "errorCode": "string",
+    "message": "string"
+  }
+  ```
+</Expandable>
+
+<Expandable title="500 - Internal Server Error">
+  The request is not handled correctly due to a server error.
+  
+  ```json
+  {
+    "errorCode": "string",
+    "message": "string"
+  }
+  ```
+</Expandable>
+
+<Note>
+  Share names are case-insensitive, so `vaccine_share`, `Vaccine_Share`, and `VACCINE_SHARE` all refer to the same share.
+</Note>

@@ -1,0 +1,391 @@
+---
+title: Query Table Data
+description: Read data from a shared Delta table
+---
+
+This is the primary API for reading data from a Delta Sharing table. It supports filtering, pagination hints, time travel, and streaming queries.
+
+## Request
+
+<ParamField path="method" type="string" required>
+  POST
+</ParamField>
+
+<ParamField path="url" type="string" required>
+  `{prefix}/shares/{share}/schemas/{schema}/tables/{table}/query`
+</ParamField>
+
+### Headers
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token for authentication
+  ```
+  Authorization: Bearer {token}
+  ```
+</ParamField>
+
+<ParamField header="Content-Type" type="string">
+  ```
+  Content-Type: application/json; charset=utf-8
+  ```
+</ParamField>
+
+<ParamField header="delta-sharing-capabilities" type="string">
+  Optional capabilities header for advanced features:
+  ```
+  delta-sharing-capabilities: responseformat=delta;readerfeatures=deletionvectors
+  ```
+  
+  See [Delta Sharing Capabilities](/protocol/overview#delta-sharing-capabilities) for details.
+</ParamField>
+
+### URL Parameters
+
+<ParamField path="share" type="string" required>
+  The share name to query. This parameter is case-insensitive.
+</ParamField>
+
+<ParamField path="schema" type="string" required>
+  The schema name to query. This parameter is case-insensitive.
+</ParamField>
+
+<ParamField path="table" type="string" required>
+  The table name to query. This parameter is case-insensitive.
+</ParamField>
+
+### Request Body
+
+<ParamField body="predicateHints" type="array[string]">
+  List of SQL boolean expressions for filtering files. Applied as best-effort hints.
+  
+  - Uses a restricted subset of SQL
+  - Expressions are AND-ed together
+  - Server may return files that don't satisfy predicates
+  - **Will be deprecated in favor of `jsonPredicateHints`**
+  
+  Example:
+  ```json
+  ["date >= '2021-01-01'", "date <= '2021-01-31'"]
+  ```
+</ParamField>
+
+<ParamField body="jsonPredicateHints" type="string">
+  Query predicates on partition columns in structured JSON format. Best-effort filtering hint.
+</ParamField>
+
+<ParamField body="limitHint" type="Int32">
+  Hint for the maximum number of rows the client plans to read. Server may use file statistics to return a subset of files.
+  
+  Example: Set to `1000` for `SELECT * FROM table LIMIT 1000`
+</ParamField>
+
+<ParamField body="version" type="Long">
+  Table version number for time travel queries. Returns files as of the specified version.
+  
+  Only supported on tables with history sharing enabled.
+</ParamField>
+
+<ParamField body="timestamp" type="string">
+  Timestamp string in ISO8601 format (UTC timezone). Returns files corresponding to the table version at this timestamp.
+  
+  Format: `2022-01-01T00:00:00Z`
+  
+  Only supported on tables with history sharing enabled.
+</ParamField>
+
+<ParamField body="startingVersion" type="Long">
+  Starting version (inclusive) for streaming queries. Returns all data change files since this version, including historical metadata.
+  
+  Used for Delta Sharing Structured Streaming support.
+</ParamField>
+
+<ParamField body="endingVersion" type="Long">
+  Optional ending version hint when `startingVersion` is set. Not enforced - client should handle files beyond this version.
+</ParamField>
+
+## Response
+
+### Headers
+
+<ResponseField name="Content-Type" type="string">
+  ```
+  Content-Type: application/x-ndjson; charset=utf-8
+  ```
+</ResponseField>
+
+<ResponseField name="Delta-Table-Version" type="Long">
+  - Without time travel: Current table version
+  - With time travel: Starting version of returned files
+</ResponseField>
+
+### Response Body
+
+The response is a sequence of newline-delimited JSON (NDJSON) objects:
+
+<ResponseField name="protocol" type="object" required>
+  First line: Protocol version information
+  
+  ```json
+  {
+    "protocol": {
+      "minReaderVersion": 1
+    }
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="metaData" type="object" required>
+  Second line: Table metadata including schema
+  
+  <Expandable title="Metadata Fields">
+    <ResponseField name="id" type="string">
+      Unique table identifier (UUID)
+    </ResponseField>
+    
+    <ResponseField name="format" type="object">
+      File format information (typically `{"provider": "parquet"}`)
+    </ResponseField>
+    
+    <ResponseField name="schemaString" type="string">
+      JSON-encoded Delta Lake schema
+    </ResponseField>
+    
+    <ResponseField name="partitionColumns" type="array">
+      Array of partition column names
+    </ResponseField>
+    
+    <ResponseField name="configuration" type="object">
+      Table configuration properties
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="file" type="object">
+  Subsequent lines: Data file objects (for snapshot queries)
+  
+  <Expandable title="File Fields">
+    <ResponseField name="url" type="string">
+      Pre-signed URL for downloading the file
+    </ResponseField>
+    
+    <ResponseField name="id" type="string">
+      Unique file identifier
+    </ResponseField>
+    
+    <ResponseField name="partitionValues" type="object">
+      Map of partition column names to values
+    </ResponseField>
+    
+    <ResponseField name="size" type="Long">
+      File size in bytes
+    </ResponseField>
+    
+    <ResponseField name="stats" type="string">
+      JSON-encoded statistics (numRecords, minValues, maxValues, nullCount)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="add/remove" type="object">
+  For streaming queries (`startingVersion` set): Change data files
+  
+  <Expandable title="Change File Fields">
+    <ResponseField name="url" type="string">
+      Pre-signed URL for the file
+    </ResponseField>
+    
+    <ResponseField name="id" type="string">
+      Unique file identifier
+    </ResponseField>
+    
+    <ResponseField name="partitionValues" type="object">
+      Partition values
+    </ResponseField>
+    
+    <ResponseField name="size" type="Long">
+      File size in bytes
+    </ResponseField>
+    
+    <ResponseField name="timestamp" type="Long">
+      Commit timestamp in milliseconds
+    </ResponseField>
+    
+    <ResponseField name="version" type="Long">
+      Table version for this change
+    </ResponseField>
+    
+    <ResponseField name="stats" type="string">
+      File statistics
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Example: Snapshot Query
+
+<CodeGroup>
+```bash cURL
+curl -X POST \
+  '{prefix}/shares/share_name/schemas/schema_name/tables/table_name/query' \
+  -H 'Authorization: Bearer {token}' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "predicateHints": [
+      "date >= '"'"'2021-01-01'"'"'",
+      "date <= '"'"'2021-01-31'"'"'"
+    ],
+    "limitHint": 1000,
+    "version": 123
+  }'
+```
+
+```python Python
+import requests
+
+url = "{prefix}/shares/share_name/schemas/schema_name/tables/table_name/query"
+headers = {
+    "Authorization": "Bearer {token}",
+    "Content-Type": "application/json"
+}
+body = {
+    "predicateHints": [
+        "date >= '2021-01-01'",
+        "date <= '2021-01-31'"
+    ],
+    "limitHint": 1000,
+    "version": 123
+}
+
+response = requests.post(url, headers=headers, json=body)
+for line in response.iter_lines():
+    print(json.loads(line))
+```
+
+```javascript JavaScript
+const response = await fetch(
+  '{prefix}/shares/share_name/schemas/schema_name/tables/table_name/query',
+  {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer {token}',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      predicateHints: [
+        "date >= '2021-01-01'",
+        "date <= '2021-01-31'"
+      ],
+      limitHint: 1000,
+      version: 123
+    })
+  }
+);
+
+const text = await response.text();
+const lines = text.split('\n').filter(l => l);
+lines.forEach(line => console.log(JSON.parse(line)));
+```
+</CodeGroup>
+
+### Response
+
+```
+HTTP/2 200
+content-type: application/x-ndjson; charset=utf-8
+delta-table-version: 123
+```
+
+```json
+{"protocol":{"minReaderVersion":1}}
+{"metaData":{"id":"f8d5c169-3d01-4ca3-ad9e-7dc3355aedb2","format":{"provider":"parquet"},"schemaString":"{\"type\":\"struct\",\"fields\":[{\"name\":\"eventTime\",\"type\":\"timestamp\",\"nullable\":true,\"metadata\":{}},{\"name\":\"date\",\"type\":\"date\",\"nullable\":true,\"metadata\":{}}]}","partitionColumns":["date"]}}
+{"file":{"url":"https://<s3-bucket-name>.s3.us-west-2.amazonaws.com/delta-exchange-test/table2/date%3D2021-04-28/part-00000-8b0086f2.parquet?...","id":"8b0086f2-7b27-4935-ac5a-8ed6215a6640","partitionValues":{"date":"2021-04-28"},"size":573,"stats":"{\"numRecords\":1,\"minValues\":{\"eventTime\":\"2021-04-28T23:33:57.955Z\"},\"maxValues\":{\"eventTime\":\"2021-04-28T23:33:57.955Z\"},\"nullCount\":{\"eventTime\":0}}"}}
+```
+
+## Example: Streaming Query
+
+<CodeGroup>
+```bash cURL
+curl -X POST \
+  '{prefix}/shares/share_name/schemas/schema_name/tables/table_name/query' \
+  -H 'Authorization: Bearer {token}' \
+  -H 'Content-Type: application/json' \
+  -d '{"startingVersion": 1}'
+```
+
+```python Python
+import requests
+
+url = "{prefix}/shares/share_name/schemas/schema_name/tables/table_name/query"
+headers = {
+    "Authorization": "Bearer {token}",
+    "Content-Type": "application/json"
+}
+body = {"startingVersion": 1}
+
+response = requests.post(url, headers=headers, json=body)
+```
+</CodeGroup>
+
+## Error Responses
+
+<Expandable title="400 - Bad Request">
+  The request is malformed.
+  
+  ```json
+  {
+    "errorCode": "string",
+    "message": "string"
+  }
+  ```
+</Expandable>
+
+<Expandable title="401 - Unauthorized">
+  The bearer token is missing or incorrect.
+  
+  ```json
+  {
+    "errorCode": "string",
+    "message": "string"
+  }
+  ```
+</Expandable>
+
+<Expandable title="403 - Forbidden">
+  The request is forbidden from being fulfilled.
+  
+  ```json
+  {
+    "errorCode": "string",
+    "message": "string"
+  }
+  ```
+</Expandable>
+
+<Expandable title="404 - Not Found">
+  The requested resource does not exist.
+  
+  ```json
+  {
+    "errorCode": "string",
+    "message": "string"
+  }
+  ```
+</Expandable>
+
+<Expandable title="500 - Internal Server Error">
+  The request is not handled correctly due to a server error.
+  
+  ```json
+  {
+    "errorCode": "string",
+    "message": "string"
+  }
+  ```
+</Expandable>
+
+<Note>
+  **Best-effort filtering**: Both `predicateHints` and `limitHint` are hints, not guarantees. The client must always apply additional filtering and limiting if needed. If both are present, the server applies predicates first, then limits.
+</Note>
+
+<Note>
+  **Empty request**: Provide an empty JSON object `{}` when no parameters are needed.
+</Note>

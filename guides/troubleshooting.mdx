@@ -1,0 +1,909 @@
+---
+title: Troubleshooting Guide
+description: Common issues and solutions for Delta Sharing installations and operations
+---
+
+This guide covers common issues encountered when installing, configuring, and operating Delta Sharing, along with detailed solutions and debugging techniques.
+
+## Installation Issues
+
+### delta-kernel-rust Installation Failures
+
+The most common installation issue involves the `delta-kernel-rust-sharing-wrapper` package:
+
+<Warning>
+**Installation Error**
+
+```bash
+ERROR: Could not find a version that satisfies the requirement delta-kernel-rust-sharing-wrapper
+ERROR: No matching distribution found for delta-kernel-rust-sharing-wrapper
+```
+</Warning>
+
+**Root Causes:**
+1. Python version < 3.8
+2. glibc version < 2.31 (Linux systems)
+3. No pre-built wheel for your platform
+4. Outdated pip version
+
+#### Solution 1: Verify System Requirements
+
+```bash
+# Check Python version (must be >= 3.8)
+python3 --version
+
+# Check glibc version (Linux only, must be >= 2.31)
+ldd --version
+```
+
+**Expected Output:**
+```
+Python 3.8.0 or higher
+ldd (GNU libc) 2.31 or higher
+```
+
+#### Solution 2: Upgrade pip and Retry
+
+```bash
+# Upgrade pip to latest version
+pip3 install --upgrade pip
+
+# Retry installation
+pip3 install delta-sharing
+```
+
+#### Solution 3: Install Rust for Building from Source
+
+If PyPI doesn't have a pre-built wheel for your platform:
+
+```bash
+# Install Rust toolchain
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source $HOME/.cargo/env
+
+# Verify Rust installation
+rustc --version
+
+# Install delta-sharing (will build from source)
+pip3 install delta-sharing
+```
+
+**Building from Source:**
+```bash
+# Manual build of delta-kernel-rust-sharing-wrapper
+cd /path/to/delta-sharing/python/delta-kernel-rust-sharing-wrapper
+python3 -m venv .venv
+source .venv/bin/activate
+pip3 install maturin
+maturin develop
+```
+
+<Note>
+**Pre-built Wheel Availability**
+
+Check available platforms at: https://pypi.org/project/delta-kernel-rust-sharing-wrapper/#files
+
+Common supported platforms:
+- Linux x86_64 (glibc >= 2.31)
+- macOS x86_64 and arm64
+- Windows x86_64
+</Note>
+
+#### Solution 4: Use Older Version (Temporary Workaround)
+
+```bash
+# Install older version without Rust dependency
+pip3 install delta-sharing==1.0.5
+```
+
+<Warning>
+**Limited Features**
+
+Older versions (< 1.1) lack some features like improved performance and Delta format support. Use this only as a temporary workaround.
+</Warning>
+
+### glibc Version Incompatibility
+
+**Problem:**
+```bash
+ImportError: /lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_2.31' not found
+```
+
+**Platform-Specific Solutions:**
+
+<Accordion title="Ubuntu/Debian">
+
+```bash
+# Check current version
+ldd --version
+
+# Upgrade to Ubuntu 20.04+ or Debian 11+
+sudo do-release-upgrade
+
+# Or use Docker with modern base image
+FROM ubuntu:22.04
+RUN apt-get update && apt-get install -y python3 python3-pip
+```
+
+</Accordion>
+
+<Accordion title="CentOS/RHEL">
+
+```bash
+# CentOS 8+ or RHEL 8+ required
+cat /etc/redhat-release
+
+# Upgrade or use Docker
+FROM centos:8
+RUN dnf install -y python3 python3-pip
+```
+
+</Accordion>
+
+<Accordion title="Alpine Linux">
+
+Alpine uses musl libc, not glibc. Build from source:
+
+```dockerfile
+FROM alpine:latest
+RUN apk add --no-cache \
+    python3 python3-dev py3-pip \
+    rust cargo gcc musl-dev
+RUN pip3 install delta-sharing
+```
+
+</Accordion>
+
+## Authentication Failures
+
+### Invalid Bearer Token
+
+**Error:**
+```json
+{
+  "errorCode": "UNAUTHENTICATED_REQUEST",
+  "message": "The bearer token is missing or incorrect"
+}
+```
+
+**Debugging Steps:**
+
+1. **Verify Profile File Format:**
+
+```python
+import json
+
+with open('profile.share', 'r') as f:
+    profile = json.load(f)
+    print(f"Bearer token present: {'bearerToken' in profile}")
+    print(f"Endpoint: {profile.get('endpoint')}")
+    print(f"Version: {profile.get('shareCredentialsVersion')}")
+```
+
+**Expected Profile Structure:**
+```json
+{
+  "shareCredentialsVersion": 1,
+  "endpoint": "https://sharing.example.com/delta-sharing/",
+  "bearerToken": "actual-token-here",
+  "expirationTime": "2024-12-31T23:59:59.0Z"
+}
+```
+
+2. **Test Bearer Token Manually:**
+
+```bash
+# Extract token and endpoint
+BEARER_TOKEN=$(jq -r '.bearerToken' profile.share)
+ENDPOINT=$(jq -r '.endpoint' profile.share)
+
+# Test API connectivity
+curl -X GET "${ENDPOINT}shares" \
+  -H "Authorization: Bearer ${BEARER_TOKEN}" \
+  -v
+```
+
+**Successful Response (200 OK):**
+```json
+{
+  "items": [
+    {"name": "share1", "id": "..."}
+  ]
+}
+```
+
+3. **Check Token Expiration:**
+
+```python
+from datetime import datetime
+import json
+
+with open('profile.share', 'r') as f:
+    profile = json.load(f)
+    expiration = profile.get('expirationTime')
+    
+    if expiration:
+        exp_time = datetime.fromisoformat(expiration.replace('Z', '+00:00'))
+        now = datetime.now(exp_time.tzinfo)
+        
+        if exp_time < now:
+            print(f"Token EXPIRED on {expiration}")
+        else:
+            print(f"Token valid until {expiration}")
+    else:
+        print("No expiration time (token doesn't expire)")
+```
+
+### Server Authorization Configuration Issues
+
+**Problem:** Server not requiring authentication (all requests succeed)
+
+**Diagnosis:**
+```bash
+# Check server configuration
+cat conf/delta-sharing-server.yaml
+```
+
+**Secure Configuration:**
+```yaml
+authorization:
+  bearerToken: <secure-random-token>
+  
+shares:
+  - name: "vaccine_share"
+    schemas:
+      - name: "acme_vaccine_data"
+        tables:
+          - name: "vaccine_ingredients"
+            location: "s3://bucket/table"
+```
+
+**Generate Secure Token:**
+```bash
+# Generate cryptographically secure token
+openssl rand -base64 32
+```
+
+<Tip>
+**Testing Authentication**
+
+Test with invalid token to verify authentication is enforced:
+
+```bash
+curl -X GET "${ENDPOINT}shares" \
+  -H "Authorization: Bearer invalid-token" \
+  -v
+# Should return 401 Unauthorized
+```
+</Tip>
+
+## Connection and Network Issues
+
+### HTTPS/SSL Certificate Errors
+
+**Error:**
+```
+SSLError: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed
+```
+
+**Solution 1: Verify Certificate Chain**
+
+```bash
+# Test SSL certificate
+openssl s_client -connect sharing.example.com:443 -showcerts
+
+# Check certificate expiration
+openssl s_client -connect sharing.example.com:443 2>/dev/null | \
+  openssl x509 -noout -dates
+```
+
+**Solution 2: Update CA Certificates**
+
+```bash
+# Ubuntu/Debian
+sudo apt-get update
+sudo apt-get install --reinstall ca-certificates
+
+# CentOS/RHEL
+sudo yum reinstall ca-certificates
+
+# macOS
+brew install ca-certificates
+```
+
+**Solution 3: Corporate Proxy/Firewall**
+
+```python
+import os
+import delta_sharing
+
+# Configure proxy if behind corporate firewall
+os.environ['HTTPS_PROXY'] = 'http://proxy.company.com:8080'
+os.environ['HTTP_PROXY'] = 'http://proxy.company.com:8080'
+
+# If using self-signed certificates (NOT recommended for production)
+import ssl
+ssl._create_default_https_context = ssl._create_unverified_context
+```
+
+<Warning>
+**Security Risk**
+
+Disabling SSL verification exposes you to man-in-the-middle attacks. Only use for testing with self-signed certificates in controlled environments.
+</Warning>
+
+### Connection Timeout Errors
+
+**Error:**
+```
+requests.exceptions.ConnectionError: Connection timeout
+```
+
+**Debugging:**
+
+```bash
+# Test basic connectivity
+ping sharing.example.com
+
+# Test port accessibility
+telnet sharing.example.com 443
+
+# Test with increased timeout
+curl -X GET "${ENDPOINT}shares" \
+  -H "Authorization: Bearer ${BEARER_TOKEN}" \
+  --connect-timeout 30 \
+  --max-time 60
+```
+
+**Python Client Timeout Configuration:**
+
+```python
+import delta_sharing
+import requests
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
+
+# Configure retries and timeouts
+session = requests.Session()
+retry_strategy = Retry(
+    total=3,
+    backoff_factor=1,
+    status_forcelist=[429, 500, 502, 503, 504]
+)
+adapter = HTTPAdapter(
+    max_retries=retry_strategy,
+    pool_connections=10,
+    pool_maxsize=10
+)
+session.mount("http://", adapter)
+session.mount("https://", adapter)
+
+# Use with longer timeout
+session.get(endpoint, timeout=60)
+```
+
+### Firewall and Port Issues
+
+**Required Ports:**
+- **443** (HTTPS) - Delta Sharing API
+- **80** (HTTP) - Redirect to HTTPS only
+- **Outbound** - Access to cloud storage (S3, Azure, GCS)
+
+**Firewall Rules:**
+
+```bash
+# Allow HTTPS traffic (iptables)
+sudo iptables -A INPUT -p tcp --dport 443 -j ACCEPT
+sudo iptables -A OUTPUT -p tcp --sport 443 -j ACCEPT
+
+# AWS Security Group (via AWS CLI)
+aws ec2 authorize-security-group-ingress \
+  --group-id sg-xxxxx \
+  --protocol tcp \
+  --port 443 \
+  --cidr 0.0.0.0/0
+```
+
+## Data Access Issues
+
+### Table Not Found Errors
+
+**Error:**
+```json
+{
+  "errorCode": "RESOURCE_DOES_NOT_EXIST",
+  "message": "Table not found: share.schema.table"
+}
+```
+
+**Debugging Steps:**
+
+1. **List Available Shares:**
+
+```python
+import delta_sharing
+
+client = delta_sharing.SharingClient("profile.share")
+
+# List all shares
+shares = client.list_shares()
+for share in shares:
+    print(f"Share: {share.name}")
+    
+# List schemas in share
+schemas = client.list_schemas(shares[0])
+for schema in schemas:
+    print(f"  Schema: {schema.name}")
+    
+# List tables in schema
+tables = client.list_tables(schemas[0])
+for table in tables:
+    print(f"    Table: {table.name}")
+```
+
+2. **Verify Table URL Format:**
+
+```python
+# Correct format
+table_url = "profile.share#share_name.schema_name.table_name"
+
+# Test with client.list_all_tables()
+all_tables = client.list_all_tables(shares[0])
+for table in all_tables:
+    # Construct correct URL
+    correct_url = f"profile.share#{table.share}.{table.schema}.{table.name}"
+    print(correct_url)
+```
+
+3. **Check Case Sensitivity:**
+
+```python
+# Names are case-insensitive in Delta Sharing
+# These are equivalent:
+table_url_1 = "profile.share#Share.Schema.Table"
+table_url_2 = "profile.share#share.schema.table"
+
+# Both should work
+df1 = delta_sharing.load_as_pandas(table_url_1)
+df2 = delta_sharing.load_as_pandas(table_url_2)
+```
+
+### Cloud Storage Access Errors
+
+**AWS S3 Errors:**
+
+```
+An error occurred (403) when calling the GetObject operation: Forbidden
+```
+
+**Solution:**
+
+1. **Verify IAM Permissions:**
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::my-delta-bucket/*",
+        "arn:aws:s3:::my-delta-bucket"
+      ]
+    }
+  ]
+}
+```
+
+2. **Test S3 Access:**
+
+```bash
+# Using AWS CLI
+aws s3 ls s3://my-delta-bucket/table/
+
+# Using curl with pre-signed URL
+curl -I "<pre-signed-url>"
+```
+
+3. **Check S3 Bucket Policy:**
+
+```bash
+# View bucket policy
+aws s3api get-bucket-policy --bucket my-delta-bucket
+
+# Check bucket ACL
+aws s3api get-bucket-acl --bucket my-delta-bucket
+```
+
+**Azure Blob Storage Errors:**
+
+```
+Azure Error: AuthenticationFailed
+```
+
+**Solution:**
+
+```bash
+# Verify account key
+az storage account keys list \
+  --account-name mystorageaccount \
+  --resource-group myresourcegroup
+
+# Test access
+az storage blob list \
+  --account-name mystorageaccount \
+  --container-name mycontainer \
+  --account-key <key>
+```
+
+**Configure core-site.xml:**
+
+```xml
+<?xml version="1.0"?>
+<configuration>
+  <property>
+    <name>fs.azure.account.key.mystorageaccount.blob.core.windows.net</name>
+    <value>YOUR-CORRECT-ACCOUNT-KEY</value>
+  </property>
+</configuration>
+```
+
+### Pre-signed URL Expiration
+
+**Error:**
+```
+An error occurred (403) when calling the GetObject operation: Request has expired
+```
+
+**Solution:**
+
+1. **Check URL Expiration:**
+
+```python
+import delta_sharing
+import time
+
+# Get file metadata
+table = delta_sharing.load_as_pandas(
+    table_url,
+    limit=1
+)
+
+# Check expirationTimestamp (if available)
+# URLs typically expire in 1-24 hours
+```
+
+2. **Refresh URLs:**
+
+```python
+# Re-query table to get fresh URLs
+df = delta_sharing.load_as_pandas(table_url)
+# New pre-signed URLs will be generated
+```
+
+3. **Configure Server URL Expiration:**
+
+```yaml
+# Server configuration (example)
+shares:
+  - name: "my_share"
+    preSignedUrlExpirationSeconds: 3600  # 1 hour
+```
+
+## Spark Connector Issues
+
+### Dependency Conflicts
+
+**Error:**
+```
+java.lang.NoSuchMethodError: org.apache.spark.sql.catalyst...
+```
+
+**Solution:**
+
+1. **Verify Spark Version:**
+
+```bash
+# Check Spark version
+spark-submit --version
+
+# Delta Sharing requires Spark 3.0+
+```
+
+2. **Use Correct Package Version:**
+
+```bash
+# Spark 3.1+
+pyspark --packages io.delta:delta-sharing-spark_2.12:3.1.0
+
+# Check for conflicting Delta Lake versions
+pyspark --packages io.delta:delta-sharing-spark_2.12:3.1.0 \
+  --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension
+```
+
+3. **Resolve Scala Version Conflicts:**
+
+```bash
+# Match Scala version to your Spark installation
+# Spark 3.x uses Scala 2.12
+io.delta:delta-sharing-spark_2.12:3.1.0
+```
+
+### Streaming Query Failures
+
+**Error:**
+```
+org.apache.spark.sql.streaming.StreamingQueryException: 
+Table doesn't support CDF
+```
+
+**Solution:**
+
+1. **Verify CDF Support:**
+
+```python
+import delta_sharing
+
+# Check table metadata
+client = delta_sharing.SharingClient("profile.share")
+# CDF requires enableChangeDataFeed=true in table configuration
+```
+
+2. **Check startingVersion Parameter:**
+
+```python
+# Correct streaming setup
+df = spark.readStream \
+    .format("deltaSharing") \
+    .option("startingVersion", "0") \
+    .option("skipChangeCommits", "true") \
+    .load(table_path)
+
+# Process with checkpoint
+query = df.writeStream \
+    .format("console") \
+    .option("checkpointLocation", "/tmp/checkpoint") \
+    .start()
+```
+
+3. **Configure Query Intervals:**
+
+```python
+# Reduce server load with longer intervals
+spark.conf.set(
+    "spark.delta.sharing.streaming.queryTableVersionIntervalSeconds",
+    "60"  # Must be >= 10 seconds
+)
+```
+
+## Performance Issues
+
+### Slow Query Performance
+
+**Symptoms:**
+- Queries taking minutes instead of seconds
+- High memory usage
+- Network timeouts
+
+**Diagnostics:**
+
+```python
+import delta_sharing
+import time
+
+def diagnose_performance(table_url):
+    # Test metadata fetch
+    start = time.time()
+    client = delta_sharing.SharingClient("profile.share")
+    # Get version - should be < 1 second
+    metadata_time = time.time() - start
+    
+    # Test small query
+    start = time.time()
+    df = delta_sharing.load_as_pandas(table_url, limit=10)
+    small_query_time = time.time() - start
+    
+    # Test with predicates
+    start = time.time()
+    df = delta_sharing.load_as_pandas(
+        table_url,
+        predicateHints=["date >= '2024-01-01'"],
+        limit=100
+    )
+    filtered_query_time = time.time() - start
+    
+    print(f"Metadata fetch: {metadata_time:.2f}s")
+    print(f"Small query (10 rows): {small_query_time:.2f}s")
+    print(f"Filtered query (100 rows): {filtered_query_time:.2f}s")
+    
+diagnose_performance("profile.share#share.schema.table")
+```
+
+**Solutions:**
+
+See the [Performance Optimization](/guides/performance) guide for:
+- Predicate pushdown
+- Batch conversion
+- Partitioning strategies
+- Caching techniques
+
+### Memory Issues
+
+**Error:**
+```
+MemoryError: Unable to allocate array
+```
+
+**Solutions:**
+
+1. **Use Batch Conversion:**
+
+```python
+# Instead of loading all data at once
+df = delta_sharing.load_as_pandas(
+    table_url,
+    convert_in_batches=True  # Reduces memory usage
+)
+```
+
+2. **Use Spark for Large Tables:**
+
+```python
+from pyspark.sql import SparkSession
+
+spark = SparkSession.builder \
+    .config("spark.driver.memory", "4g") \
+    .config("spark.executor.memory", "4g") \
+    .getOrCreate()
+
+df = spark.read.format("deltaSharing").load(table_url)
+# Process with distributed computing
+```
+
+3. **Query Incrementally:**
+
+```python
+# Process data in chunks
+for date in date_range:
+    df_chunk = delta_sharing.load_as_pandas(
+        table_url,
+        predicateHints=[f"date = '{date}'"]
+    )
+    process_chunk(df_chunk)
+```
+
+## Debugging Techniques
+
+### Enable Debug Logging
+
+```python
+import logging
+import delta_sharing
+
+# Enable DEBUG logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger('delta_sharing')
+logger.setLevel(logging.DEBUG)
+
+# See detailed HTTP requests and responses
+client = delta_sharing.SharingClient("profile.share")
+shares = client.list_shares()
+```
+
+### Inspect HTTP Traffic
+
+```bash
+# Use mitmproxy to inspect traffic
+pip install mitmproxy
+mitmproxy -p 8080
+
+# Configure Python to use proxy
+export HTTP_PROXY=http://localhost:8080
+export HTTPS_PROXY=http://localhost:8080
+
+python your_script.py
+```
+
+### Server-Side Logging
+
+```bash
+# Check server logs
+tail -f logs/delta-sharing-server.log
+
+# Filter for errors
+grep ERROR logs/delta-sharing-server.log
+
+# Search for specific table queries
+grep "table_name" logs/delta-sharing-server.log
+```
+
+### Version Compatibility Matrix
+
+| Component | Minimum Version | Recommended Version | Notes |
+|-----------|----------------|---------------------|-------|
+| Python | 3.8 | 3.10+ | Required for delta-sharing 1.1+ |
+| glibc (Linux) | 2.31 | 2.35+ | Ubuntu 20.04+, Debian 11+ |
+| Spark | 3.0 | 3.3+ | For Spark connector |
+| Java | 8 | 11+ | For Spark connector |
+| delta-sharing (Python) | 1.0.5 | Latest | Use latest for bug fixes |
+| delta-sharing-spark | 1.0 | 3.1+ | Use 3.1+ for Delta format |
+
+## Getting Help
+
+### Collect Debug Information
+
+Before reporting issues, collect:
+
+```bash
+#!/bin/bash
+# debug-info.sh
+
+echo "=== System Information ==="
+uname -a
+python3 --version
+pip3 list | grep delta
+
+echo "\n=== Python Environment ==="
+python3 -c "import delta_sharing; print(f'Version: {delta_sharing.__version__}')"
+
+echo "\n=== Network Test ==="
+curl -I https://sharing.example.com/delta-sharing/
+
+echo "\n=== Profile File ==="
+jq '{endpoint, shareCredentialsVersion, hasToken: (.bearerToken != null)}' profile.share
+```
+
+### Common Resources
+
+- **GitHub Issues**: https://github.com/delta-io/delta-sharing/issues
+- **Slack Channel**: https://delta-users.slack.com/
+- **Stack Overflow**: Tag questions with `delta-sharing`
+- **Protocol Specification**: https://github.com/delta-io/delta-sharing/blob/main/PROTOCOL.md
+
+### Issue Report Template
+
+```markdown
+**Environment:**
+- OS: [Ubuntu 22.04 / macOS 13 / Windows 11]
+- Python version: [3.10.0]
+- delta-sharing version: [1.1.0]
+- Installation method: [pip / conda / source]
+
+**Problem Description:**
+[Clear description of the issue]
+
+**Steps to Reproduce:**
+1. [First step]
+2. [Second step]
+3. [Error occurs]
+
+**Expected Behavior:**
+[What should happen]
+
+**Actual Behavior:**
+[What actually happens]
+
+**Error Messages:**
+```
+[Complete error traceback]
+```
+
+**Additional Context:**
+- Profile file endpoint: [https://...]
+- Table size: [1 GB / 100 GB / 1 TB]
+- Network environment: [corporate proxy / cloud / direct]
+```
+
+<Tip>
+**Quick Fixes Summary**
+
+1. **Installation issues**: Upgrade pip, check Python/glibc versions, install Rust if needed
+2. **Authentication issues**: Verify bearer token, check expiration, test with curl
+3. **Network issues**: Check firewall, test SSL certificates, configure proxy
+4. **Performance issues**: Use predicates, enable batch conversion, try Spark for large data
+5. **Memory issues**: Use `convert_in_batches=True` or switch to Spark
+</Tip>

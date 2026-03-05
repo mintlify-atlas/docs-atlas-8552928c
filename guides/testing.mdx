@@ -1,0 +1,437 @@
+---
+title: Testing
+description: Run comprehensive tests for Delta Sharing Python connector, Spark connector, and server components
+icon: flask
+---
+
+Delta Sharing uses different testing frameworks for its Python and Scala/Java components. This guide covers running tests for all components of the project.
+
+## Python Connector Tests
+
+The Python connector uses [pytest](https://pytest.org/) for testing, including both unit tests and doctests.
+
+### Running All Python Tests
+
+The simplest way to run all Python tests is using the provided test script:
+
+```bash
+python/dev/pytest
+```
+
+This command runs:
+- **Unit tests** in the `delta_sharing` package
+- **Doctests** embedded in the module documentation
+- **Integration tests** with verbose output and colored results
+
+<Note>
+  The test script automatically ignores `delta_sharing/_yarl_patch.py` during automatic import to verify it's loaded on-demand as expected.
+</Note>
+
+### Running Specific Test Files
+
+To run tests from a specific file:
+
+```bash
+python/dev/pytest delta_sharing/tests/test_delta_sharing.py
+```
+
+### Running Specific Test Cases
+
+Target individual test functions or classes:
+
+<CodeGroup>
+```bash Single Test Function
+python/dev/pytest delta_sharing/tests/test_delta_sharing.py::test_profile_loading
+```
+
+```bash Test Class
+python/dev/pytest delta_sharing/tests/test_delta_sharing.py::TestDeltaSharingClient
+```
+
+```bash Specific Method in Class
+python/dev/pytest delta_sharing/tests/test_delta_sharing.py::TestDeltaSharingClient::test_list_shares
+```
+</CodeGroup>
+
+### Python Test Options
+
+Customize test execution with pytest options:
+
+<CodeGroup>
+```bash Verbose Output
+# Show detailed test information
+python/dev/pytest -v
+```
+
+```bash Show Print Statements
+# Display print() output during tests
+python/dev/pytest -s
+```
+
+```bash Stop on First Failure
+# Exit immediately on first test failure
+python/dev/pytest -x
+```
+
+```bash Run Last Failed Tests
+# Re-run only tests that failed in the last run
+python/dev/pytest --lf
+```
+
+```bash Test Coverage
+# Generate coverage report
+python/dev/pytest --cov=delta_sharing --cov-report=html
+```
+</CodeGroup>
+
+### Python Test Environment
+
+Tests can use environment variables for configuration:
+
+```bash
+# Enable detailed logging in tests
+export AWS_ACCESS_KEY_ID=your_test_key
+python/dev/pytest
+```
+
+When `AWS_ACCESS_KEY_ID` is set, the test script enables verbose logging (`-o log_cli=true -s`).
+
+## Spark Connector and Server Tests
+
+The Spark connector and Delta Sharing Server use [ScalaTest](https://www.scalatest.org/) via SBT.
+
+### Running All Scala Tests
+
+Run the complete test suite for all Scala components:
+
+```bash
+build/sbt test
+```
+
+This executes tests for:
+- **Client library** (`delta-sharing-client`)
+- **Spark connector** (`delta-sharing-spark`)
+- **Delta Sharing Server** (`delta-sharing-server`)
+
+### Running Tests for Specific Components
+
+<Steps>
+  <Step title="Test Client Only">
+    ```bash
+    build/sbt client/test
+    ```
+  </Step>
+  
+  <Step title="Test Spark Connector Only">
+    ```bash
+    build/sbt spark/test
+    ```
+  </Step>
+  
+  <Step title="Test Server Only">
+    ```bash
+    build/sbt server/test
+    ```
+  </Step>
+</Steps>
+
+### Running Specific Test Suites
+
+Execute individual test suites using the `testOnly` command:
+
+```bash
+# Run a specific test suite
+build/sbt "testOnly io.delta.sharing.client.DeltaSharingClientSuite"
+
+# Run multiple test suites
+build/sbt "testOnly io.delta.sharing.client.*Suite"
+
+# Run tests matching a pattern
+build/sbt "testOnly *DeltaSharing*"
+```
+
+### Running Specific Tests Within a Suite
+
+You can run individual tests by name:
+
+```bash
+# Run a specific test by substring match
+build/sbt "testOnly *DeltaSharingClientSuite -- -z 'list shares'"
+```
+
+The `-z` flag filters tests whose names contain the specified string.
+
+## Test Configuration
+
+The build system includes optimized test configurations to improve performance and reduce memory usage.
+
+### JVM Test Options
+
+Tests run with the following JVM settings (configured in `build.sbt`):
+
+```scala
+Test / javaOptions ++= Seq(
+  "-Dspark.ui.enabled=false",
+  "-Dspark.ui.showConsoleProgress=false",
+  "-Dspark.databricks.delta.snapshotPartitions=2",
+  "-Dspark.sql.shuffle.partitions=5",
+  "-Dspark.sql.sources.parallelPartitionDiscovery.parallelism=5",
+  "-Dspark.delta.sharing.network.sslTrustAll=true",
+  "-Xmx1024m"
+)
+```
+
+These settings:
+- Disable Spark UI to reduce overhead
+- Limit partition counts for faster tests
+- Configure SSL for test environments
+- Set maximum heap size to 1GB
+
+### Azure Test Configuration
+
+For tests requiring Azure access, configure credentials:
+
+```bash
+export AZURE_TEST_ACCOUNT_KEY=your_account_key
+build/sbt test
+```
+
+## Cross-Version Testing
+
+Test against multiple Scala versions:
+
+<CodeGroup>
+```bash Scala 2.12
+build/sbt ++2.12.18 test
+```
+
+```bash Scala 2.13
+build/sbt ++2.13.13 test
+```
+
+```bash All Cross-Versions
+build/sbt +test
+```
+</CodeGroup>
+
+## Continuous Testing
+
+Automatic test execution on file changes:
+
+```bash
+# Re-run tests automatically when source files change
+build/sbt ~test
+
+# Watch specific project
+build/sbt ~client/test
+```
+
+<Note>
+  Press Enter to manually trigger a test run. Press Ctrl+C to exit watch mode.
+</Note>
+
+## Test Output and Debugging
+
+### Verbose Test Output
+
+<CodeGroup>
+```bash SBT Verbose
+# Show full stack traces on failures
+build/sbt "testOnly *Suite -- -oF"
+```
+
+```bash Python Verbose
+# Show verbose pytest output
+python/dev/pytest -vv
+```
+</CodeGroup>
+
+### Parallel Test Execution
+
+By default, parallel execution is disabled (`ThisBuild / parallelExecution := false` in `build.sbt`) to prevent resource conflicts. To enable parallel tests:
+
+```bash
+build/sbt "set ThisBuild / parallelExecution := true" test
+```
+
+<Warning>
+  Parallel execution may cause test failures due to port conflicts or shared resources. Use with caution.
+</Warning>
+
+## Code Quality Checks
+
+Delta Sharing enforces code quality through automatic style checking.
+
+### Scala Style Checks
+
+ScalaStyle checks run automatically with compilation and testing:
+
+```bash
+# Style checks run automatically
+build/sbt compile  # Runs compileScalastyle
+build/sbt test     # Runs testScalastyle
+```
+
+To run style checks manually:
+
+```bash
+# Check main sources
+build/sbt scalastyle
+
+# Check test sources
+build/sbt test:scalastyle
+```
+
+### Python Code Quality
+
+The Python connector includes linting and formatting tools:
+
+<CodeGroup>
+```bash Lint Python Code
+python/dev/lint-python
+```
+
+```bash Reformat Python Code
+python/dev/reformat
+```
+</CodeGroup>
+
+## Test Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Run Before Commits" icon="code-commit">
+    Always run tests before committing code changes to catch issues early.
+  </Card>
+  <Card title="Write Descriptive Tests" icon="file-lines">
+    Use clear test names that describe what is being tested.
+  </Card>
+  <Card title="Test Edge Cases" icon="triangle-exclamation">
+    Include tests for error conditions and boundary cases.
+  </Card>
+  <Card title="Keep Tests Fast" icon="gauge-high">
+    Optimize tests to run quickly for better development experience.
+  </Card>
+</CardGroup>
+
+## Integration Testing
+
+For integration tests requiring a running Delta Sharing Server:
+
+<Steps>
+  <Step title="Build the server">
+    ```bash
+    build/sbt server/compile
+    ```
+  </Step>
+  
+  <Step title="Configure test server">
+    Create a test configuration file at `conf/delta-sharing-server-test.yaml`
+  </Step>
+  
+  <Step title="Start test server">
+    ```bash
+    build/sbt "server/runMain io.delta.sharing.server.DeltaSharingService -- --config conf/delta-sharing-server-test.yaml"
+    ```
+  </Step>
+  
+  <Step title="Run integration tests">
+    In another terminal:
+    ```bash
+    python/dev/pytest delta_sharing/tests/test_integration.py
+    ```
+  </Step>
+</Steps>
+
+## Common Test Failures
+
+<AccordionGroup>
+  <Accordion title="Out of Memory Errors">
+    **Solution**: Increase JVM heap size
+    
+    ```bash
+    export SBT_OPTS="-Xmx2G"
+    build/sbt test
+    ```
+  </Accordion>
+  
+  <Accordion title="Port Already in Use">
+    **Solution**: Kill processes using the required ports
+    
+    ```bash
+    # Find process using port 8080
+    lsof -i :8080
+    
+    # Kill the process
+    kill -9 <PID>
+    ```
+  </Accordion>
+  
+  <Accordion title="Python Import Errors">
+    **Solution**: Install package in development mode
+    
+    ```bash
+    cd python/
+    pip install -e .
+    ```
+  </Accordion>
+  
+  <Accordion title="Azure/AWS Credential Errors">
+    **Solution**: Set up test credentials
+    
+    ```bash
+    export AWS_ACCESS_KEY_ID=test_key
+    export AWS_SECRET_ACCESS_KEY=test_secret
+    export AZURE_TEST_ACCOUNT_KEY=test_key
+    ```
+  </Accordion>
+  
+  <Accordion title="ScalaStyle Failures">
+    **Solution**: Fix style violations or update configuration
+    
+    ```bash
+    # View detailed style errors
+    build/sbt scalastyle
+    
+    # Auto-format where possible
+    python/dev/reformat  # For Python
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Debugging Tests
+
+### Debug Python Tests
+
+Run pytest with debugger integration:
+
+```bash
+# Drop into debugger on failure
+python/dev/pytest --pdb
+
+# Set breakpoint in code
+import pdb; pdb.set_trace()
+```
+
+### Debug Scala Tests
+
+Run tests with remote debugging enabled:
+
+```bash
+build/sbt -jvm-debug 5005 test
+```
+
+Then connect your IDE debugger to port 5005.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Building" icon="hammer" href="/guides/building">
+    Learn how to build Delta Sharing from source
+  </Card>
+  <Card title="Contributing" icon="code-pull-request" href="/guides/contributing">
+    Submit your tested changes upstream
+  </Card>
+  <Card title="CI/CD" icon="gears" href="/guides/ci-cd">
+    Understand the continuous integration pipeline
+  </Card>
+</CardGroup>

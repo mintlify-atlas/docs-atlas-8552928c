@@ -1,97 +1,271 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Delta Sharing Documentation"
+mode: "custom"
 ---
 
-## Setting up
+<div className="relative overflow-hidden bg-gradient-to-br from-[#046c84] via-[#04a8d0] to-[#67c4d6] dark:from-[#0f1117] dark:via-[#1a1d27] dark:to-[#242838] py-20">
+  <div className="max-w-7xl mx-auto px-6 lg:px-8">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+      <div className="lg:col-span-7">
+        <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white dark:text-gray-100 mb-6">
+          Open Protocol for Secure Data Sharing
+        </h1>
+        <p className="text-lg sm:text-xl text-white/90 dark:text-gray-300 max-w-2xl mb-8">
+          Share large datasets securely in real-time across organizations without copying data. Delta Sharing is an open REST protocol that works with any computing platform.
+        </p>
+        <div className="flex flex-wrap gap-4">
+          <a 
+            href="/quickstart" 
+            className="inline-flex items-center justify-center px-6 py-3 rounded-lg bg-white text-[#04a8d0] font-semibold hover:bg-gray-100 transition-colors no-underline"
+          >
+            Get Started
+          </a>
+          <a 
+            href="/protocol/overview" 
+            className="inline-flex items-center justify-center px-6 py-3 rounded-lg border-2 border-white/30 bg-white/10 text-white font-semibold hover:bg-white/20 transition-colors no-underline"
+          >
+            View Protocol
+          </a>
+        </div>
+      </div>
+      <div className="lg:col-span-5 hidden lg:block">
+        <div className="relative">
+          <div className="absolute inset-0 bg-white/10 dark:bg-black/20 rounded-2xl blur-2xl"></div>
+          <div className="relative bg-white/20 dark:bg-[#1a1d27] border border-white/30 dark:border-[#27272a] rounded-2xl p-6 backdrop-blur-sm">
+            <div className="text-sm font-mono text-white dark:text-gray-300">
+              <div className="text-[#67c4d6]">import</div> delta_sharing
+              <br/><br/>
+              client = delta_sharing.<span className="text-[#67c4d6]">SharingClient</span>(profile)
+              <br/>
+              df = delta_sharing.<span className="text-[#67c4d6]">load_as_pandas</span>(table_url)
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
-Get your documentation site up and running in minutes.
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-4">
+    Quick Start
+  </h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    Get started with Delta Sharing in minutes using Python or Apache Spark.
+  </p>
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+  <Steps>
+    <Step title="Install the Python Connector">
+      Install the Delta Sharing Python package using pip:
+      
+      ```bash
+      pip install delta-sharing
+      ```
+      
+      <Note>
+        Requires Python 3.8+ and glibc >= 2.31 for automatic installation. See the [installation guide](/python/installation) for alternative methods.
+      </Note>
+    </Step>
 
-## Make it yours
+    <Step title="Get a Profile File">
+      A profile file contains credentials to access a Delta Sharing server. Download an example profile to try with our sample data:
+      
+      ```bash
+      curl https://databricks-datasets-oregon.s3-us-west-2.amazonaws.com/delta-sharing/share/open-datasets.share -o config.share
+      ```
+      
+      <Accordion title="Profile file format">
+        Profile files are JSON documents containing server endpoint and authentication details:
+        
+        ```json
+        {
+          "shareCredentialsVersion": 1,
+          "endpoint": "https://sharing.delta.io/delta-sharing/",
+          "bearerToken": "your-token-here"
+        }
+        ```
+      </Accordion>
+    </Step>
 
-Design a docs site that looks great and empowers your users.
+    <Step title="Load Shared Data">
+      Use the Python connector to load shared tables as pandas DataFrames:
+      
+      ```python
+      import delta_sharing
+      
+      # Create a SharingClient
+      client = delta_sharing.SharingClient("config.share")
+      
+      # List available tables
+      tables = client.list_all_tables()
+      
+      # Load a table as a pandas DataFrame
+      table_url = "config.share#share.schema.table"
+      df = delta_sharing.load_as_pandas(table_url)
+      ```
+      
+      <Tip>
+        If running in PySpark, use `load_as_spark()` to load tables as Spark DataFrames for distributed processing.
+      </Tip>
+    </Step>
+  </Steps>
+</div>
 
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
-  </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
-  </Card>
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-4">
+    Explore by Topic
+  </h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    Choose your path based on how you want to use Delta Sharing.
+  </p>
+
+  <CardGroup cols={2}>
     <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
-  </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
-  </Card>
-</Columns>
+      title="Python Connector"
+      icon="python"
+      href="/python/quickstart"
+    >
+      Read shared tables with pandas or PySpark. Perfect for data science and analytics workflows.
+    </Card>
+    <Card
+      title="Apache Spark Connector"
+      icon="fire"
+      href="/spark/quickstart"
+    >
+      Access shared data in Spark SQL, Python, Scala, Java, or R with full streaming support.
+    </Card>
+    <Card
+      title="Reference Server"
+      icon="server"
+      href="/server/overview"
+    >
+      Deploy your own Delta Sharing server to share Delta Lake and Parquet tables.
+    </Card>
+    <Card
+      title="Protocol Specification"
+      icon="book-open"
+      href="/protocol/overview"
+    >
+      Learn the open REST protocol that powers Delta Sharing integrations.
+    </Card>
+  </CardGroup>
+</div>
 
-## Create beautiful pages
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-4">
+    Key Features
+  </h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    Everything you need for secure, scalable data sharing.
+  </p>
 
-Everything you need to create world-class documentation.
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div className="p-6 rounded-xl border border-gray-200 dark:border-[#27272a] bg-white dark:bg-[#1a1d27]">
+      <div className="w-12 h-12 rounded-lg bg-[#04a8d0]/10 dark:bg-[#04a8d0]/20 flex items-center justify-center mb-4">
+        <svg className="w-6 h-6 text-[#04a8d0]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+        </svg>
+      </div>
+      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+        Secure by Design
+      </h3>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        Bearer token authentication with pre-signed URLs for direct cloud storage access. No data passes through the server.
+      </p>
+    </div>
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+    <div className="p-6 rounded-xl border border-gray-200 dark:border-[#27272a] bg-white dark:bg-[#1a1d27]">
+      <div className="w-12 h-12 rounded-lg bg-[#04a8d0]/10 dark:bg-[#04a8d0]/20 flex items-center justify-center mb-4">
+        <svg className="w-6 h-6 text-[#04a8d0]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+        </svg>
+      </div>
+      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+        Multi-Cloud Support
+      </h3>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        Works with S3, Azure Blob Storage, Azure Data Lake Gen2, Google Cloud Storage, and Cloudflare R2.
+      </p>
+    </div>
 
-## Need inspiration?
+    <div className="p-6 rounded-xl border border-gray-200 dark:border-[#27272a] bg-white dark:bg-[#1a1d27]">
+      <div className="w-12 h-12 rounded-lg bg-[#04a8d0]/10 dark:bg-[#04a8d0]/20 flex items-center justify-center mb-4">
+        <svg className="w-6 h-6 text-[#04a8d0]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+        </svg>
+      </div>
+      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+        Change Data Feed
+      </h3>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        Query incremental changes between versions for efficient incremental data processing and streaming.
+      </p>
+    </div>
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+    <div className="p-6 rounded-xl border border-gray-200 dark:border-[#27272a] bg-white dark:bg-[#1a1d27]">
+      <div className="w-12 h-12 rounded-lg bg-[#04a8d0]/10 dark:bg-[#04a8d0]/20 flex items-center justify-center mb-4">
+        <svg className="w-6 h-6 text-[#04a8d0]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
+        </svg>
+      </div>
+      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+        Open Protocol
+      </h3>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        Simple REST protocol that anyone can implement. Community connectors available for 10+ languages and platforms.
+      </p>
+    </div>
+  </div>
+</div>
+
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-4">
+    Resources
+  </h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    Additional resources to help you succeed with Delta Sharing.
+  </p>
+
+  <CardGroup cols={3}>
+    <Card
+      title="Community Connectors"
+      icon="puzzle-piece"
+      href="/community/connectors"
+    >
+      Explore connectors for Rust, Go, Java, R, Node.js, and more.
+    </Card>
+    <Card
+      title="Building from Source"
+      icon="hammer"
+      href="/guides/building"
+    >
+      Compile and test the Python connector, Spark connector, and server.
+    </Card>
+    <Card
+      title="Contributing"
+      icon="code-pull-request"
+      href="/guides/contributing"
+    >
+      Learn how to contribute to the Delta Sharing project.
+    </Card>
+  </CardGroup>
+</div>
+
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="rounded-2xl bg-gradient-to-r from-[#04a8d0] to-[#67c4d6] dark:from-[#046c84] dark:to-[#04a8d0] p-8 md:p-12">
+    <div className="max-w-3xl">
+      <h2 className="text-2xl sm:text-3xl font-bold text-white mb-4">
+        Ready to start sharing data?
+      </h2>
+      <p className="text-lg text-white/90 mb-6">
+        Follow our quickstart guide to share or consume your first Delta table in minutes.
+      </p>
+      <a 
+        href="/quickstart" 
+        className="inline-flex items-center justify-center px-6 py-3 rounded-lg bg-white text-[#04a8d0] font-semibold hover:bg-gray-100 transition-colors no-underline"
+      >
+        Start Quickstart →
+      </a>
+    </div>
+  </div>
+</div>

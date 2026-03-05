@@ -1,0 +1,196 @@
+---
+title: List Shares
+description: Retrieve all shares accessible to a recipient
+---
+
+This API returns a paginated list of shares that the authenticated recipient can access. Each share is a logical grouping that can contain multiple schemas and tables.
+
+## Request
+
+<ParamField path="method" type="string" required>
+  GET
+</ParamField>
+
+<ParamField path="url" type="string" required>
+  `{prefix}/shares`
+</ParamField>
+
+### Headers
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token for authentication
+  ```
+  Authorization: Bearer {token}
+  ```
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="maxResults" type="Int32">
+  The maximum number of results per page that should be returned. If the number of available results is larger than `maxResults`, the response will provide a `nextPageToken` for pagination.
+  
+  - Must be non-negative
+  - 0 will return no results but `nextPageToken` may be populated
+  - Server may return fewer items even if more are available
+</ParamField>
+
+<ParamField query="pageToken" type="String">
+  Specifies a page token to use. Set to the `nextPageToken` returned by a previous list request to get the next page of results.
+</ParamField>
+
+## Response
+
+<ResponseField name="items" type="array">
+  Array of share objects. May be an empty array or missing when no results are found.
+  
+  <Expandable title="Share Object">
+    <ResponseField name="name" type="string" required>
+      Share name (case-insensitive). Must not exceed 255 characters.
+    </ResponseField>
+    
+    <ResponseField name="id" type="string">
+      Unique identifier for the share. Should be immutable through the share's lifecycle. Format recommendation: UUID.
+    </ResponseField>
+    
+    <ResponseField name="displayName" type="string">
+      Human-readable share name to display to users. Must not exceed 255 characters.
+    </ResponseField>
+    
+    <ResponseField name="comment" type="string">
+      Description of the share. Should not exceed 65536 characters.
+    </ResponseField>
+    
+    <ResponseField name="properties" type="Map<String, String>">
+      Optional key-value metadata pairs.
+      - Keys must not exceed 255 characters
+      - Values must not exceed 1000 characters
+      - Maximum 50 key-value pairs
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="nextPageToken" type="string">
+  Token for retrieving the next page of results. May be an empty string or missing when there are no additional results.
+</ResponseField>
+
+## Example Request
+
+<CodeGroup>
+```bash cURL
+curl -X GET \
+  '{prefix}/shares?maxResults=10&pageToken=...' \
+  -H 'Authorization: Bearer {token}'
+```
+
+```python Python
+import requests
+
+url = "{prefix}/shares"
+headers = {
+    "Authorization": "Bearer {token}"
+}
+params = {
+    "maxResults": 10,
+    "pageToken": "..."
+}
+
+response = requests.get(url, headers=headers, params=params)
+shares = response.json()
+```
+
+```javascript JavaScript
+const response = await fetch(
+  '{prefix}/shares?maxResults=10&pageToken=...', 
+  {
+    method: 'GET',
+    headers: {
+      'Authorization': 'Bearer {token}'
+    }
+  }
+);
+
+const shares = await response.json();
+```
+</CodeGroup>
+
+## Example Response
+
+```json
+{
+  "items": [
+    {
+      "name": "vaccine_share",
+      "id": "edacc4a7-6600-4fbb-85f3-a62a5ce6761f",
+      "displayName": "Vaccine Share",
+      "comment": "A sample share containing vaccine-related datasets",
+      "properties": {
+        "owner": "vaccine-team",
+        "region": "us-west-2",
+        "created_date": "2024-01-15"
+      }
+    },
+    {
+      "name": "sales_share",
+      "id": "3e979c79-6399-4dac-bcf8-54e268f48515",
+      "displayName": "Sales Share",
+      "comment": "A sample share containing sales and revenue data",
+      "properties": {
+        "owner": "sales-team",
+        "region": "us-east-1",
+        "created_date": "2024-02-20"
+      }
+    }
+  ],
+  "nextPageToken": "..."
+}
+```
+
+## Error Responses
+
+<Expandable title="400 - Bad Request">
+  The request is malformed.
+  
+  ```json
+  {
+    "errorCode": "string",
+    "message": "string"
+  }
+  ```
+</Expandable>
+
+<Expandable title="401 - Unauthorized">
+  The bearer token is missing or incorrect.
+  
+  ```json
+  {
+    "errorCode": "string",
+    "message": "string"
+  }
+  ```
+</Expandable>
+
+<Expandable title="403 - Forbidden">
+  The request is forbidden from being fulfilled.
+  
+  ```json
+  {
+    "errorCode": "string",
+    "message": "string"
+  }
+  ```
+</Expandable>
+
+<Expandable title="500 - Internal Server Error">
+  The request is not handled correctly due to a server error.
+  
+  ```json
+  {
+    "errorCode": "string",
+    "message": "string"
+  }
+  ```
+</Expandable>
+
+<Note>
+  The client must handle both empty arrays and missing `items` fields when no results are found. Similarly, `nextPageToken` may be an empty string or missing when there are no additional results.
+</Note>

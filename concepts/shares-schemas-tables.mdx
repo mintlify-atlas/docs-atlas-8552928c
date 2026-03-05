@@ -1,0 +1,409 @@
+---
+title: Shares, Schemas, and Tables
+description: Understanding the hierarchical data model in Delta Sharing
+---
+
+Delta Sharing organizes data using a three-level hierarchy: **Shares** contain **Schemas**, which contain **Tables**. This structure provides flexible access control and logical grouping of related datasets.
+
+## Hierarchical Structure
+
+The data model follows a clear hierarchy:
+
+```
+Share (vaccine_share)
+└── Schema (acme_vaccine_data)
+    ├── Table (vaccine_ingredients)
+    └── Table (vaccine_patients)
+```
+
+Each level serves a specific purpose in organizing and controlling access to data.
+
+## Shares
+
+A **share** is the top-level logical grouping used to distribute data to recipients. Shares define the access boundary for data sharing.
+
+### Key Characteristics
+
+<CardGroup cols={2}>
+  <Card title="Access Control" icon="shield">
+    Recipients can access all resources within a share they're granted access to
+  </Card>
+  <Card title="Multi-Recipient" icon="users">
+    A single share can be shared with one or multiple recipients
+  </Card>
+  <Card title="Multi-Schema" icon="database">
+    A share may contain multiple schemas for organizing related data
+  </Card>
+  <Card title="Unique Identity" icon="fingerprint">
+    Each share has an optional immutable ID (UUID format recommended)
+  </Card>
+</CardGroup>
+
+### Share Metadata
+
+Shares include the following metadata:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| **name** | String | Yes | Share name (max 255 chars, case-insensitive) |
+| **id** | String | No | Unique immutable identifier (UUID recommended) |
+| **displayName** | String | No | Human-friendly name for display (max 255 chars) |
+| **comment** | String | No | Description or notes (max 65536 chars) |
+| **properties** | Map\<String, String\> | No | Custom key-value metadata (max 50 pairs) |
+
+<Info>
+The `id` field, when provided, remains immutable throughout the share's lifecycle, enabling stable references even if the share name changes.
+</Info>
+
+### Example Share
+
+```json
+{
+  "name": "vaccine_share",
+  "id": "edacc4a7-6600-4fbb-85f3-a62a5ce6761f",
+  "displayName": "Vaccine Share",
+  "comment": "A sample share containing vaccine-related datasets",
+  "properties": {
+    "owner": "vaccine-team",
+    "region": "us-west-2",
+    "created_date": "2024-01-15"
+  }
+}
+```
+
+## Schemas
+
+A **schema** is a logical grouping of tables within a share. Schemas help organize related tables and provide namespace separation.
+
+### Key Characteristics
+
+- **Namespace**: Provides logical separation between different table collections
+- **Organization**: Groups related tables together for easier discovery
+- **Hierarchical**: Belongs to exactly one share
+- **Case-Insensitive**: Schema names are case-insensitive across the protocol
+
+### Schema Metadata
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| **name** | String | Yes | Schema name (max 255 chars, no periods) |
+| **share** | String | Yes | Parent share name |
+
+### Example Schema
+
+```json
+{
+  "name": "acme_vaccine_data",
+  "share": "vaccine_share"
+}
+```
+
+<Note>
+Schema names must not contain the period (`.`) character to avoid conflicts with table references.
+</Note>
+
+## Tables
+
+A **table** represents a Delta Lake table or a view on top of a Delta Lake table. Tables are the actual data containers that recipients access.
+
+### Key Characteristics
+
+<CardGroup cols={2}>
+  <Card title="Delta Format" icon="table">
+    All tables are Delta Lake tables stored in Parquet format
+  </Card>
+  <Card title="Versioned" icon="clock">
+    Tables track version history for time travel queries
+  </Card>
+  <Card title="Partitioned" icon="layer-group">
+    Support for partition columns to optimize queries
+  </Card>
+  <Card title="Stateful" icon="chart-line">
+    Include per-file statistics for query optimization
+  </Card>
+</CardGroup>
+
+### Table Metadata
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| **name** | String | Yes | Table name (max 255 chars, no periods) |
+| **schema** | String | Yes | Parent schema name |
+| **share** | String | Yes | Parent share name |
+| **id** | String | No | Unique table identifier within share (UUID) |
+| **shareId** | String | No | Immutable share identifier |
+| **location** | String | No* | Root directory path (required for `dir` access) |
+| **auxiliaryLocations** | Array\<String\> | No | Additional storage locations |
+| **accessModes** | Array\<String\> | No | Supported access modes (`url`, `dir`) |
+
+<Warning>
+The `location` field is required when the table supports directory-based access mode.
+</Warning>
+
+### Example Table
+
+```json
+{
+  "name": "vaccine_patients",
+  "schema": "acme_vaccine_data",
+  "share": "vaccine_share",
+  "id": "c48f3e19-2c29-4ea3-b6f7-3899e53338fa",
+  "shareId": "edacc4a7-6600-4fbb-85f3-a62a5ce6761f",
+  "location": "s3://deltasharing/vaccine_share/acme_vaccine_data/vaccine_patients",
+  "accessModes": ["url", "dir"]
+}
+```
+
+## Table Schema and Format
+
+Each table has a detailed schema definition and format specification:
+
+### Schema Definition
+
+Table schemas use a JSON representation compatible with Apache Spark SQL:
+
+```json
+{
+  "type": "struct",
+  "fields": [
+    {
+      "name": "eventTime",
+      "type": "timestamp",
+      "nullable": true,
+      "metadata": {}
+    },
+    {
+      "name": "date",
+      "type": "date",
+      "nullable": true,
+      "metadata": {}
+    },
+    {
+      "name": "patient_id",
+      "type": "long",
+      "nullable": false,
+      "metadata": {
+        "comment": "Unique patient identifier"
+      }
+    }
+  ]
+}
+```
+
+### Supported Data Types
+
+<Tabs>
+  <Tab title="Primitive Types">
+    - **string**: UTF-8 encoded text
+    - **long**: 8-byte signed integer
+    - **integer**: 4-byte signed integer
+    - **short**: 2-byte signed integer
+    - **byte**: 1-byte signed integer
+    - **float**: 4-byte floating-point
+    - **double**: 8-byte floating-point
+    - **boolean**: true/false
+    - **binary**: Binary data
+    - **date**: Calendar date (year-month-day)
+    - **timestamp**: Microsecond precision timestamp
+    - **decimal**: Fixed precision decimal numbers
+  </Tab>
+  
+  <Tab title="Complex Types">
+    **Array**
+    ```json
+    {
+      "type": "array",
+      "elementType": "integer",
+      "containsNull": false
+    }
+    ```
+    
+    **Map**
+    ```json
+    {
+      "type": "map",
+      "keyType": "string",
+      "valueType": "string",
+      "valueContainsNull": true
+    }
+    ```
+    
+    **Struct**
+    ```json
+    {
+      "type": "struct",
+      "fields": [
+        {"name": "field1", "type": "string", "nullable": true}
+      ]
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Partition Columns
+
+Tables can be partitioned to optimize query performance:
+
+```json
+{
+  "metaData": {
+    "partitionColumns": ["date", "region"],
+    "schemaString": "..."
+  }
+}
+```
+
+Partition values are serialized as strings:
+
+| Type | Format | Example |
+|------|--------|--------|
+| **date** | `{year}-{month}-{day}` | `2021-04-28` |
+| **timestamp** | `{year}-{month}-{day} {hour}:{minute}:{second}` | `2021-04-28 23:33:48` |
+| **numeric** | String representation | `123` |
+| **boolean** | `true` or `false` | `true` |
+| **null** | Empty string | `""` |
+
+## Naming Conventions
+
+All Delta Sharing objects must follow these naming rules:
+
+<Warning>
+**All Objects**
+- Maximum 255 characters
+- Case-insensitive
+- Cannot contain:
+  - Space (` `)
+  - Forward slash (`/`)
+  - ASCII control characters (`00-1F` hex)
+  - DELETE character (`7F` hex)
+
+**Tables and Schemas Only**
+- Additionally cannot contain period (`.`)
+</Warning>
+
+### Valid Examples
+
+```
+valid_share_name
+Vaccine_Data_2024
+acme-vaccine-data
+```
+
+### Invalid Examples
+
+```
+invalid share name  # Contains space
+invalid/share       # Contains forward slash
+table.name          # Period not allowed for tables/schemas
+```
+
+## Querying the Hierarchy
+
+Clients can navigate the hierarchy using REST APIs:
+
+<Steps>
+  <Step title="List Shares">
+    ```http
+    GET {prefix}/shares
+    ```
+    Discover all accessible shares
+  </Step>
+  
+  <Step title="List Schemas">
+    ```http
+    GET {prefix}/shares/vaccine_share/schemas
+    ```
+    Find schemas within a share
+  </Step>
+  
+  <Step title="List Tables">
+    ```http
+    GET {prefix}/shares/vaccine_share/schemas/acme_vaccine_data/tables
+    ```
+    Discover tables within a schema
+  </Step>
+  
+  <Step title="Query Table">
+    ```http
+    POST {prefix}/shares/vaccine_share/schemas/acme_vaccine_data/tables/vaccine_patients/query
+    ```
+    Access table data
+  </Step>
+</Steps>
+
+## Pagination Support
+
+All list operations support pagination for large result sets:
+
+```json
+{
+  "items": [...],
+  "nextPageToken": "eyJvZmZzZXQiOjEwMH0="
+}
+```
+
+**Query Parameters:**
+- `maxResults`: Maximum items per page (optional)
+- `pageToken`: Token from previous response to get next page
+
+<Info>
+The server may return fewer items than `maxResults` even if more are available. Always check for `nextPageToken` to determine if additional pages exist.
+</Info>
+
+## Complete Example
+
+Here's a full example showing the hierarchy:
+
+```json
+// Share
+{
+  "name": "vaccine_share",
+  "id": "edacc4a7-6600-4fbb-85f3-a62a5ce6761f",
+  "displayName": "Vaccine Share"
+}
+
+// Schema
+{
+  "name": "acme_vaccine_data",
+  "share": "vaccine_share"
+}
+
+// Table
+{
+  "name": "vaccine_patients",
+  "schema": "acme_vaccine_data",
+  "share": "vaccine_share",
+  "location": "s3://deltasharing/vaccine_share/acme_vaccine_data/vaccine_patients",
+  "accessModes": ["url", "dir"]
+}
+
+// Table Metadata
+{
+  "metaData": {
+    "id": "c48f3e19-2c29-4ea3-b6f7-3899e53338fa",
+    "format": {"provider": "parquet"},
+    "schemaString": "{\"type\":\"struct\",\"fields\":[...]}",
+    "partitionColumns": ["date"],
+    "configuration": {
+      "enableChangeDataFeed": "true"
+    }
+  }
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Access Modes" icon="key" href="/concepts/access-modes">
+    Learn about URL-based and directory-based access patterns
+  </Card>
+  <Card title="Protocol Overview" icon="network-wired" href="/concepts/protocol-overview">
+    Understand the REST API and authentication
+  </Card>
+  <Card title="Profile Files" icon="file" href="/concepts/profile-files">
+    Configure recipient access with profile files
+  </Card>
+  <Card title="API Reference" icon="code" href="/api-reference">
+    Explore detailed API documentation
+  </Card>
+</CardGroup>

@@ -1,0 +1,234 @@
+---
+title: Protocol Overview
+description: Learn about Delta Sharing protocol concepts, core entities, and authentication
+---
+
+Delta Sharing is an open protocol for secure real-time exchange of large datasets. It enables secure data sharing across products without requiring recipients to deploy a specific platform first. The protocol leverages modern cloud storage systems (S3, ADLS, GCS) to reliably transfer large datasets.
+
+## Core Concepts
+
+Understanding the following entities is essential for working with Delta Sharing:
+
+### Share
+
+A **Share** is a logical grouping used to organize data for recipients. Key characteristics:
+
+- Can be shared with one or multiple recipients
+- Recipients can access all resources within a share
+- May contain multiple schemas
+- Identified by a unique name and optional UUID
+
+<Info>
+Shares provide the top-level access control boundary. All tables within a share are accessible to recipients who have access to that share.
+</Info>
+
+### Schema
+
+A **Schema** is a logical grouping of tables within a share. It provides an additional organizational layer similar to database schemas in traditional systems.
+
+- Each schema belongs to exactly one share
+- Can contain multiple tables
+- Names must be unique within a share
+
+### Table
+
+A **Table** represents a Delta Lake table or a view on top of a Delta Lake table. Tables contain the actual data being shared.
+
+**Table Metadata:**
+- **name**: The table identifier
+- **id**: Optional UUID that stays immutable through the table's lifecycle
+- **location**: Root directory where the delta log exists (required for directory-based access)
+- **auxiliaryLocations**: Optional array of additional storage locations for table files
+- **accessModes**: Array indicating supported access modes (`url`, `dir`, or both)
+
+### Recipient
+
+A **Recipient** is a principal that possesses a bearer token to access shared tables. Recipients authenticate using bearer tokens included in HTTP request headers.
+
+## Access Modes
+
+Delta Sharing supports two methods for clients to read table data:
+
+<Tabs>
+  <Tab title="URL-based Access">
+    **URL-based Access** (`url`)
+    
+    The server returns pre-signed URLs for individual data files. Clients fetch files via the Query Table API.
+    
+    **Benefits:**
+    - Simple implementation
+    - Works with any HTTP client
+    - No cloud-specific SDK required
+    
+    **Use Cases:**
+    - Quick data access
+    - Clients without Delta Lake support
+    - Cross-cloud sharing scenarios
+  </Tab>
+  
+  <Tab title="Directory-based Access">
+    **Directory-based Access** (`dir`)
+    
+    The server issues temporary cloud credentials (e.g., AWS STS) via the Generate Temporary Table Credential API. Clients read the Delta log and data files directly using cloud storage APIs.
+    
+    **Benefits:**
+    - Direct access to Delta logs
+    - Better performance through caching
+    - Supports advanced Delta features
+    - Metadata optimization capabilities
+    
+    **Use Cases:**
+    - High-performance query engines
+    - Clients with Delta Kernel integration
+    - Advanced feature requirements (deletion vectors, column mapping)
+  </Tab>
+</Tabs>
+
+### Access Mode Compatibility
+
+The `accessModes` field in table metadata indicates which modes the server supports:
+
+| Server Returns | URL-only Client | Dir-only Client | Both-supported Client |
+|----------------|-----------------|-----------------|----------------------|
+| Omits accessModes | Uses URL access | **Fails** (server implies URL-only) | Uses URL access |
+| `accessModes=["url"]` | Uses URL access | **Fails** | Uses URL access |
+| `accessModes=["dir"]` | **Fails** | Uses dir access | Uses dir access |
+| `accessModes=["url","dir"]` | Uses URL access | Uses dir access | Either (client choice) |
+
+<Warning>
+For backward compatibility, if `accessModes` is absent, clients should assume URL-only access. Legacy clients that don't understand this field will attempt QueryTable requests, which will fail if the server only supports directory-based access.
+</Warning>
+
+## Authentication
+
+Delta Sharing uses **bearer token authentication** as defined in [RFC 6750](https://tools.ietf.org/html/rfc6750).
+
+### Bearer Token Header
+
+All REST API requests must include an Authorization header:
+
+```http
+Authorization: Bearer {token}
+```
+
+### Profile File
+
+Recipients receive a **profile file** (JSON) containing connection details:
+
+<CodeGroup>
+```json Profile File Example
+{
+  "shareCredentialsVersion": 1,
+  "endpoint": "https://sharing.delta.io/delta-sharing/",
+  "bearerToken": "<token>",
+  "expirationTime": "2021-11-12T00:12:29.0Z"
+}
+```
+</CodeGroup>
+
+**Fields:**
+- `shareCredentialsVersion`: Profile file format version (currently 1)
+- `endpoint`: Sharing server URL
+- `bearerToken`: Token for authentication
+- `expirationTime`: Optional token expiration in ISO 8601 format
+
+<Note>
+Clients should check the expiration time and prompt users to refresh tokens when needed.
+</Note>
+
+## Delta Sharing Capabilities Header
+
+The `delta-sharing-capabilities` header enables protocol evolution and feature negotiation between clients and servers.
+
+### Header Format
+
+```http
+delta-sharing-capabilities: responseformat=delta;readerfeatures=deletionvectors,columnmapping
+```
+
+Capabilities are semicolon-separated key-value pairs. Values within a capability are comma-separated.
+
+<Accordion title="responseformat Capability">
+  Specifies the expected format of API responses:
+  
+  - **`parquet`**: Default format, compatible with all Delta Sharing connectors (v1.0+)
+  - **`delta`**: Enables advanced features like deletion vectors and column mapping (v3.1+)
+  
+  **Compatibility Matrix:**
+  
+  | Client Specifies | Server Recognizes | Result |
+  |------------------|-------------------|--------|
+  | No header | No | Parquet format |
+  | No header | Yes | Parquet format (must) |
+  | Header present | No | Parquet format (header ignored) |
+  | `responseformat=delta` | Yes | Delta format if table has advanced features |
+  | `responseformat=delta,parquet` | Yes | Server chooses based on table features |
+</Accordion>
+
+<Accordion title="readerfeatures Capability">
+  Indicates client's ability to process Delta reader features (only useful with `responseformat=delta`):
+  
+  ```http
+  delta-sharing-capabilities: responseformat=delta;readerfeatures=deletionvectors
+  ```
+  
+  Supported values correspond to [Delta Protocol reader features](https://github.com/delta-io/delta/blob/master/PROTOCOL.md#table-features).
+</Accordion>
+
+<Accordion title="includeEndStreamAction Capability">
+  Controls whether the server includes an EndStreamAction in responses:
+  
+  ```http
+  delta-sharing-capabilities: includeEndStreamAction=true
+  ```
+  
+  When set to `true` and the server supports it:
+  - Server must set `includeEndStreamAction=true` in response header if including the action
+  - Client must verify EndStreamAction exists at the end of the response
+  - EndStreamAction may contain `refreshToken`, `nextPageToken`, or `minUrlExpirationTimestamp`
+</Accordion>
+
+## Sharing Server
+
+A **Sharing Server** is any server that implements the Delta Sharing Protocol specification. The server:
+
+- Manages authentication and authorization
+- Serves table metadata and data files
+- Applies access controls based on shares
+- Supports configurable URL prefixes
+
+<Info>
+Servers hosted by different providers may use different URL prefixes. For example:
+- `https://sharing.delta.io/delta-sharing/`
+- `https://your-company.com/api/v1/delta-sharing/`
+</Info>
+
+## Object Naming Constraints
+
+To ensure compatibility across sharing servers, object names must follow these rules:
+
+<Warning>
+**Name Constraints:**
+- Maximum length: 255 characters
+- Case-insensitive
+- No spaces, forward slashes, or ASCII control characters (`00-1F` hex)
+- No DELETE character (`7f` hex)
+- Tables and Schemas: No periods (`.`)
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="REST APIs" icon="code" href="/protocol/rest-apis">
+    Explore all available REST API endpoints
+  </Card>
+  <Card title="Response Format" icon="file-code" href="/protocol/response-format">
+    Learn about API response structures
+  </Card>
+  <Card title="Filtering" icon="filter" href="/protocol/filtering">
+    Understand data filtering capabilities
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get started with Delta Sharing
+  </Card>
+</CardGroup>

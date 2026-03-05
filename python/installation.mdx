@@ -1,0 +1,211 @@
+---
+title: Installation
+description: Install the Delta Sharing Python Connector
+---
+
+## System Requirements
+
+Before installing the Delta Sharing Python Connector, ensure your system meets the following requirements:
+
+- **Python 3.8+** for delta-sharing version 1.1+
+- **Python 3.6+** for older versions (1.0.x)
+- **Linux users**: glibc version >= 2.31 (for automatic delta-kernel-rust-sharing-wrapper installation)
+
+## Basic Installation
+
+Install the Delta Sharing Python Connector using pip:
+
+```bash
+pip install delta-sharing
+```
+
+This will install delta-sharing along with all required dependencies:
+
+- `delta-kernel-rust-sharing-wrapper>=0.3.1` - Rust-based kernel for efficient data reading
+- `pandas` - DataFrame library
+- `pyarrow>=16.1.0` - Apache Arrow library for columnar data
+- `fsspec>=0.7.4` - Filesystem specification
+- `requests` - HTTP library
+- `aiohttp` - Asynchronous HTTP client
+- `yarl>=1.6.0` - URL parsing library
+- `jwcrypto>=1.5.6` - JSON Web Crypto implementation
+
+## Cloud Storage Support
+
+To access shared tables on specific cloud storage platforms, install the corresponding extras:
+
+<CodeGroup>
+```bash AWS S3
+pip install delta-sharing[s3]
+```
+
+```bash Azure Blob Storage
+pip install delta-sharing[abfs]
+```
+
+```bash Azure Data Lake Storage
+pip install delta-sharing[adl]
+```
+
+```bash Google Cloud Storage
+pip install delta-sharing[gcs]
+```
+</CodeGroup>
+
+## Databricks Runtime
+
+If you are using [Databricks Runtime](https://docs.databricks.com/runtime/dbr.html), follow the [Databricks Libraries documentation](https://docs.databricks.com/libraries/index.html) to install the library on your clusters:
+
+<Steps>
+  <Step title="Navigate to Libraries">
+    In your Databricks workspace, go to your cluster configuration and select the **Libraries** tab.
+  </Step>
+  
+  <Step title="Install from PyPI">
+    Click **Install New** → **PyPI** and enter `delta-sharing` as the package name.
+  </Step>
+  
+  <Step title="Attach to Cluster">
+    The library will be automatically installed and attached to your cluster.
+  </Step>
+</Steps>
+
+## Troubleshooting delta-kernel-rust-sharing-wrapper
+
+The delta-sharing package depends on `delta-kernel-rust-sharing-wrapper`, which is a Rust-based component. If you encounter installation issues, try the following solutions:
+
+### Common Issues and Solutions
+
+<Accordion title="Installation fails with 'delta-kernel-rust-sharing-wrapper' error">
+  Try these steps in order:
+
+  1. **Verify Python version**:
+     ```bash
+     python3 --version  # Should be >= 3.8
+     ```
+
+  2. **Upgrade pip to the latest version**:
+     ```bash
+     pip3 install --upgrade pip
+     ```
+
+  3. **Check glibc version** (Linux only):
+     ```bash
+     ldd --version  # Should be >= 2.31
+     ```
+
+  4. **Install Rust** if building from source is required:
+     ```bash
+     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+     source $HOME/.cargo/env
+     ```
+</Accordion>
+
+<Accordion title="No pre-built wheel available for your platform">
+  If PyPI does not have a pre-built wheel for your environment, pip will attempt to build the package from source. This requires Rust to be installed.
+
+  Check available pre-built wheels at: [https://pypi.org/project/delta-kernel-rust-sharing-wrapper/#files](https://pypi.org/project/delta-kernel-rust-sharing-wrapper/#files)
+
+  Supported platforms typically include:
+  - Linux (x86_64, glibc >= 2.31)
+  - macOS (x86_64, arm64)
+  - Windows (x86_64)
+</Accordion>
+
+<Accordion title="Cannot upgrade glibc on Linux">
+  If you cannot upgrade glibc to version 2.31 or higher, you have two options:
+
+  **Option 1: Manual installation with Rust**
+  ```bash
+  # Install Rust
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+  source $HOME/.cargo/env
+
+  # Navigate to the wrapper directory
+  cd [delta-sharing-root]/python/delta-kernel-rust-sharing-wrapper
+
+  # Create virtual environment
+  python3 -m venv .venv
+  source .venv/bin/activate
+
+  # Install maturin and build
+  pip3 install maturin
+  maturin develop
+  ```
+
+  **Option 2: Use an older version**
+  ```bash
+  pip3 install delta-sharing==1.0.5
+  ```
+
+  <Note>
+    Version 1.0.5 does not include delta-kernel-rust-sharing-wrapper and may have limited functionality compared to newer versions.
+  </Note>
+</Accordion>
+
+### Manual Build from Source
+
+For advanced users who need to build the Rust wrapper manually:
+
+<Steps>
+  <Step title="Install Rust toolchain">
+    ```bash
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+    source $HOME/.cargo/env
+    ```
+  </Step>
+
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/delta-io/delta-sharing.git
+    cd delta-sharing/python/delta-kernel-rust-sharing-wrapper
+    ```
+  </Step>
+
+  <Step title="Build with maturin">
+    ```bash
+    python3 -m venv .venv
+    source .venv/bin/activate
+    pip3 install maturin
+    maturin develop --release
+    ```
+  </Step>
+</Steps>
+
+## Development Installation
+
+For development purposes, you can install delta-sharing in editable mode:
+
+```bash
+# Clone the repository
+git clone https://github.com/delta-io/delta-sharing.git
+cd delta-sharing/python
+
+# Install in editable mode
+pip install -e .
+
+# Or install with development dependencies
+pip install -e . -r requirements-dev.txt
+```
+
+## Verification
+
+Verify your installation by importing the package and checking the version:
+
+```python
+import delta_sharing
+print(delta_sharing.__version__)
+```
+
+You should see the installed version number without any errors.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/python/quickstart">
+    Learn how to read your first shared table
+  </Card>
+  <Card title="API Reference" icon="code" href="/python/api-reference">
+    Explore the complete API documentation
+  </Card>
+</CardGroup>

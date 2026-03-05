@@ -1,0 +1,336 @@
+---
+title: Quick Start
+description: Get started with the Delta Sharing Python Connector
+---
+
+## Prerequisites
+
+Before you begin, ensure you have:
+
+- Installed the delta-sharing package (see [Installation](/python/installation))
+- A Delta Sharing profile file (`.share` file) with credentials to access a Delta Sharing server
+
+<Note>
+  You can download a sample profile file to access our example Delta Sharing server [here](https://databricks-datasets-oregon.s3-us-west-2.amazonaws.com/delta-sharing/share/open-datasets.share).
+</Note>
+
+## Profile Files
+
+A profile file is a JSON file containing credentials to access a Delta Sharing Server. Here's what a typical profile file looks like:
+
+```json
+{
+  "shareCredentialsVersion": 1,
+  "endpoint": "https://sharing.example.com/delta-sharing/",
+  "bearerToken": "your-bearer-token-here"
+}
+```
+
+Profile files can be stored:
+- On your local file system: `/path/to/profile.share`
+- On cloud storage with FSSPEC support: `s3://bucket/profile.share`
+- On Databricks File System (DBFS): `/dbfs/path/to/profile.share`
+
+## Basic Usage with Pandas
+
+### Creating a SharingClient
+
+The `SharingClient` allows you to explore available shares, schemas, and tables:
+
+```python
+import delta_sharing
+
+# Point to your profile file
+profile_file = "/path/to/profile.share"
+
+# Create a SharingClient
+client = delta_sharing.SharingClient(profile_file)
+
+# List all shared tables
+tables = client.list_all_tables()
+for table in tables:
+    print(f"{table.share}.{table.schema}.{table.name}")
+```
+
+### Loading Data as Pandas DataFrame
+
+To load a shared table, construct a table URL in the format: `<profile-path>#<share>.<schema>.<table>`
+
+```python
+import delta_sharing
+
+# Construct table URL
+profile_file = "/path/to/profile.share"
+table_url = f"{profile_file}#my_share.my_schema.my_table"
+
+# Load entire table as pandas DataFrame
+df = delta_sharing.load_as_pandas(table_url)
+print(df.head())
+```
+
+### Sampling Data
+
+For large tables, use the `limit` parameter to fetch only a sample:
+
+```python
+# Fetch only 10 rows to explore the table structure
+sample_df = delta_sharing.load_as_pandas(table_url, limit=10)
+print(sample_df)
+```
+
+<Warning>
+  The `limit` parameter is useful for exploration but does not guarantee which rows are returned. For production use cases, load the full table or use appropriate filtering.
+</Warning>
+
+### Time Travel Queries
+
+Query historical versions of a table using version or timestamp:
+
+<CodeGroup>
+```python Version
+# Load table at a specific version
+df = delta_sharing.load_as_pandas(
+    table_url,
+    version=5
+)
+```
+
+```python Timestamp
+# Load table as it existed at a specific timestamp
+df = delta_sharing.load_as_pandas(
+    table_url,
+    timestamp="2024-01-15T10:30:00Z"
+)
+```
+</CodeGroup>
+
+### Using Delta Format
+
+For better performance with supported tables, use Delta format:
+
+```python
+# Explicitly use Delta format for reading
+df = delta_sharing.load_as_pandas(
+    table_url,
+    use_delta_format=True
+)
+```
+
+<Note>
+  Delta format provides more efficient data transfer and better predicate pushdown. The connector automatically chooses the best format if `use_delta_format` is not specified.
+</Note>
+
+### Memory-Efficient Loading
+
+For large tables, use batch conversion to reduce memory consumption:
+
+```python
+# Convert parquet files to pandas one batch at a time
+df = delta_sharing.load_as_pandas(
+    table_url,
+    convert_in_batches=True
+)
+```
+
+This approach:
+- Reduces peak memory usage
+- May take longer to complete
+- Particularly beneficial for parquet format queries
+
+## Using with PySpark
+
+<Note>
+  To use `load_as_spark`, you must be running in a PySpark environment with the Apache Spark Connector for Delta Sharing installed. See [Apache Spark Connector documentation](/spark/installation) for setup instructions.
+</Note>
+
+### Loading as Spark DataFrame
+
+```python
+import delta_sharing
+from pyspark.sql import SparkSession
+
+# Ensure you're in a PySpark session
+spark = SparkSession.builder \
+    .appName("DeltaSharing") \
+    .config("spark.jars.packages", "io.delta:delta-sharing-spark_2.12:3.1.0") \
+    .getOrCreate()
+
+# Load table as Spark DataFrame
+table_url = f"{profile_file}#my_share.my_schema.my_table"
+df = delta_sharing.load_as_spark(table_url)
+
+# Use Spark DataFrame operations
+df.show()
+df.printSchema()
+```
+
+### Time Travel with Spark
+
+<CodeGroup>
+```python Version
+df = delta_sharing.load_as_spark(
+    table_url,
+    version=10
+)
+```
+
+```python Timestamp
+df = delta_sharing.load_as_spark(
+    table_url,
+    timestamp="2024-01-15T10:30:00Z"
+)
+```
+</CodeGroup>
+
+## Reading Change Data Feed (CDF)
+
+If a table has Change Data Feed enabled, you can query table changes:
+
+### CDF with Pandas
+
+```python
+import delta_sharing
+
+# Load table changes from version 0 to version 5
+changes_df = delta_sharing.load_table_changes_as_pandas(
+    table_url,
+    starting_version=0,
+    ending_version=5
+)
+
+print(changes_df.head())
+```
+
+The resulting DataFrame includes these columns:
+- All original table columns
+- `_change_type`: Type of change (`insert`, `update_preimage`, `update_postimage`, `delete`)
+- `_commit_version`: Version number of the change
+- `_commit_timestamp`: Timestamp of the change
+
+### CDF with Version Range
+
+```python
+# Get all changes from version 10 to latest
+changes_df = delta_sharing.load_table_changes_as_pandas(
+    table_url,
+    starting_version=10
+)
+```
+
+### CDF with Timestamp Range
+
+```python
+# Get changes between two timestamps
+changes_df = delta_sharing.load_table_changes_as_pandas(
+    table_url,
+    starting_timestamp="2024-01-01T00:00:00Z",
+    ending_timestamp="2024-01-31T23:59:59Z"
+)
+```
+
+### CDF with Spark
+
+```python
+# Load table changes as Spark DataFrame
+changes_df = delta_sharing.load_table_changes_as_spark(
+    table_url,
+    starting_version=0,
+    ending_version=5
+)
+
+changes_df.show()
+```
+
+### Memory-Efficient CDF
+
+```python
+# Use batch conversion for large change sets
+changes_df = delta_sharing.load_table_changes_as_pandas(
+    table_url,
+    starting_version=0,
+    ending_version=100,
+    convert_in_batches=True,
+    use_delta_format=True
+)
+```
+
+## Getting Table Metadata
+
+Retrieve table metadata and version information:
+
+```python
+import delta_sharing
+
+# Get current table version
+version = delta_sharing.get_table_version(table_url)
+print(f"Current version: {version}")
+
+# Get version at specific timestamp
+version_at_time = delta_sharing.get_table_version(
+    table_url,
+    starting_timestamp="2024-01-15T10:00:00Z"
+)
+
+# Get table metadata
+metadata = delta_sharing.get_table_metadata(table_url)
+print(f"Table ID: {metadata.id}")
+print(f"Schema: {metadata.schema_string}")
+
+# Get table protocol
+protocol = delta_sharing.get_table_protocol(table_url)
+print(f"Min reader version: {protocol.min_reader_version}")
+```
+
+## Complete Example
+
+Here's a complete example that explores and reads shared data:
+
+```python
+import delta_sharing
+import pandas as pd
+
+# Initialize client
+profile_file = "/path/to/profile.share"
+client = delta_sharing.SharingClient(profile_file)
+
+# Explore available data
+print("Available shares:")
+for share in client.list_shares():
+    print(f"  - {share.name}")
+
+# List all tables
+print("\nAll tables:")
+tables = client.list_all_tables()
+for table in tables:
+    print(f"  - {table.share}.{table.schema}.{table.name}")
+
+# Select first table
+if tables:
+    first_table = tables[0]
+    table_url = f"{profile_file}#{first_table.share}.{first_table.schema}.{first_table.name}"
+    
+    # Get metadata
+    version = delta_sharing.get_table_version(table_url)
+    print(f"\nTable version: {version}")
+    
+    # Sample the data
+    print("\nSample data (first 5 rows):")
+    sample = delta_sharing.load_as_pandas(table_url, limit=5)
+    print(sample)
+    
+    # Load full table
+    print("\nLoading full table...")
+    df = delta_sharing.load_as_pandas(table_url)
+    print(f"Loaded {len(df)} rows, {len(df.columns)} columns")
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="API Reference" icon="code" href="/python/api-reference">
+    Explore detailed API documentation
+  </Card>
+  <Card title="Advanced Usage" icon="wand-magic-sparkles" href="/python/advanced-usage">
+    Learn about predicates, profiles, and optimization
+  </Card>
+</CardGroup>

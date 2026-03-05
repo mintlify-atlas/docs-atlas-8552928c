@@ -1,0 +1,380 @@
+---
+title: Security Best Practices
+description: Secure your Delta Sharing implementation with authentication, encryption, and access controls
+---
+
+Delta Sharing implements multiple layers of security to protect your data during transit and at rest. This guide covers authentication, encryption requirements, and best practices for securing your Delta Sharing deployment.
+
+## Authentication Overview
+
+Delta Sharing uses [bearer token authentication](https://tools.ietf.org/html/rfc6750) for all REST API requests. Every API call must include a valid bearer token in the Authorization header:
+
+```
+Authorization: Bearer {token}
+```
+
+### Bearer Token Security
+
+Bearer tokens are the primary authentication mechanism in Delta Sharing. Follow these best practices:
+
+<Warning>
+**Critical Security Requirements**
+
+- **Never commit bearer tokens to version control** - Use environment variables or secret management systems
+- **Rotate tokens regularly** - Set expiration times and implement token rotation policies
+- **Restrict token scope** - Issue tokens with minimal necessary permissions per recipient
+- **Monitor token usage** - Log and audit all token usage for security analysis
+</Warning>
+
+The bearer token is configured in the server's YAML configuration:
+
+```yaml
+authorization:
+  bearerToken: <your-secure-token>
+```
+
+<Tip>
+Generate cryptographically secure tokens using tools like `openssl rand -base64 32` or your organization's secret management system.
+</Tip>
+
+### Token Expiration
+
+Configure token expiration times in profile files to limit the window of potential token compromise:
+
+```json
+{
+  "shareCredentialsVersion": 1,
+  "endpoint": "https://sharing.delta.io/delta-sharing/",
+  "bearerToken": "<token>",
+  "expirationTime": "2024-12-31T23:59:59.0Z"
+}
+```
+
+**Key Points:**
+- Use ISO 8601 format for expiration times
+- Set reasonable expiration windows based on your security policies
+- Implement automated token renewal processes before expiration
+- Monitor and alert on approaching token expiration
+
+## HTTPS Requirements
+
+<Warning>
+**HTTPS is Mandatory for Production**
+
+Delta Sharing requires HTTPS in production environments. All REST API communications must be encrypted to protect bearer tokens and data metadata during transit.
+</Warning>
+
+### Transport Layer Security
+
+The Delta Sharing protocol transfers sensitive information:
+- Bearer tokens in every request header
+- Table metadata including schemas and statistics
+- Pre-signed URLs for data access
+- Temporary cloud credentials (for directory-based access)
+
+**Certificate Requirements:**
+- Use valid SSL/TLS certificates from trusted Certificate Authorities
+- Support TLS 1.2 or higher
+- Regularly update certificates before expiration
+- Implement certificate pinning for additional security (optional)
+
+### URL Security
+
+Delta Sharing uses pre-signed URLs for data file access:
+
+```json
+{
+  "file": {
+    "url": "https://<s3-bucket>.s3.us-west-2.amazonaws.com/table/part-00000.parquet?X-Amz-Signature=...",
+    "expirationTimestamp": 1652140800000
+  }
+}
+```
+
+**Pre-signed URL Best Practices:**
+- Set short expiration times (e.g., 1-24 hours) using `expirationTimestamp`
+- Monitor URL access patterns for anomalies
+- Rotate signing keys regularly
+- Use cloud provider security features (e.g., AWS S3 bucket policies)
+
+## Profile File Protection
+
+Profile files contain sensitive credentials and must be protected:
+
+### Storage Security
+
+<Warning>
+**Protect Profile Files**
+
+Profile files contain bearer tokens that grant access to shared tables. Treat them as sensitive credentials.
+</Warning>
+
+**File System Permissions:**
+
+```bash
+# Set restrictive permissions on profile files
+chmod 600 /path/to/profile.share
+
+# Verify permissions
+ls -l /path/to/profile.share
+# Should show: -rw------- (owner read/write only)
+```
+
+**Storage Recommendations:**
+- Store profile files in encrypted file systems
+- Use secret management systems (AWS Secrets Manager, HashiCorp Vault, etc.)
+- Implement access controls at the directory level
+- Enable audit logging for profile file access
+
+### Profile File Access Patterns
+
+Profile files can be stored locally or remotely:
+
+**Local File System:**
+```python
+import delta_sharing
+
+# Secure local access
+profile_file = "/secure/path/to/profile.share"
+client = delta_sharing.SharingClient(profile_file)
+```
+
+**Remote Storage (requires additional authentication):**
+```python
+# S3 with IAM authentication
+profile_file = "s3://my-secure-bucket/profiles/profile.share"
+client = delta_sharing.SharingClient(profile_file)
+
+# DBFS with Databricks authentication
+profile_file = "/dbfs/secure/profiles/profile.share"
+client = delta_sharing.SharingClient(profile_file)
+```
+
+<Note>
+When using remote storage, ensure proper authentication is configured for the storage system (AWS IAM roles, Azure AD, Google Cloud IAM, etc.).
+</Note>
+
+## Advanced Security: JWT Proxy Setup
+
+For enterprise deployments, implement JWT (JSON Web Token) authentication using a reverse proxy like NGINX:
+
+### NGINX JWT Configuration
+
+The reference Delta Sharing server uses basic bearer token authentication. For enhanced security, place it behind a secure proxy:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name sharing.example.com;
+
+    ssl_certificate /etc/nginx/ssl/cert.pem;
+    ssl_certificate_key /etc/nginx/ssl/key.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    # JWT Authentication
+    auth_jwt "Delta Sharing API";
+    auth_jwt_key_file /etc/nginx/jwt_key.json;
+
+    location / {
+        proxy_pass http://delta-sharing-server:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+**JWT Configuration Steps:**
+
+1. **Install NGINX with JWT module:**
+```bash
+# NGINX Plus includes JWT module
+# Or compile NGINX with jwt module
+```
+
+2. **Generate JWT signing keys:**
+```bash
+openssl genrsa -out jwt_key.pem 2048
+openssl rsa -in jwt_key.pem -pubout -out jwt_key.pub
+```
+
+3. **Configure JWT validation:**
+```json
+{
+  "keys": [
+    {
+      "kty": "RSA",
+      "kid": "sharing-key-1",
+      "use": "sig",
+      "n": "...",
+      "e": "AQAB"
+    }
+  ]
+}
+```
+
+<Tip>
+Refer to [NGINX JWT Authentication documentation](https://docs.nginx.com/nginx/admin-guide/security-controls/configuring-jwt-authentication/) for detailed configuration options.
+</Tip>
+
+## Cloud Storage Security
+
+Secure access to underlying cloud storage systems:
+
+### AWS S3 Security
+
+**Recommended Authentication Methods:**
+
+1. **EC2 IAM Metadata (Recommended):**
+```yaml
+# No explicit credentials needed
+# Associate IAM role with EC2 instance
+```
+
+2. **Environment Variables:**
+```bash
+export AWS_ACCESS_KEY_ID=my.aws.key
+export AWS_SECRET_ACCESS_KEY=my.secret.key
+```
+
+**S3 Bucket Policies:**
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DeltaSharingServerAccess",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::123456789012:role/DeltaSharingServerRole"
+      },
+      "Action": [
+        "s3:GetObject",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::my-delta-bucket/*",
+        "arn:aws:s3:::my-delta-bucket"
+      ]
+    }
+  ]
+}
+```
+
+### Azure Storage Security
+
+**Shared Key Authentication:**
+
+Create `conf/core-site.xml`:
+```xml
+<?xml version="1.0"?>
+<configuration>
+  <property>
+    <name>fs.azure.account.key.YOUR-ACCOUNT.blob.core.windows.net</name>
+    <value>YOUR-ACCOUNT-KEY</value>
+  </property>
+</configuration>
+```
+
+**Azure AD Authentication (Recommended):**
+```xml
+<configuration>
+  <property>
+    <name>fs.azure.account.auth.type.YOUR-ACCOUNT.dfs.core.windows.net</name>
+    <value>OAuth</value>
+  </property>
+  <property>
+    <name>fs.azure.account.oauth.provider.type.YOUR-ACCOUNT.dfs.core.windows.net</name>
+    <value>org.apache.hadoop.fs.azurebfs.oauth2.ClientCredsTokenProvider</value>
+  </property>
+  <property>
+    <name>fs.azure.account.oauth2.client.id.YOUR-ACCOUNT.dfs.core.windows.net</name>
+    <value>YOUR-CLIENT-ID</value>
+  </property>
+  <property>
+    <name>fs.azure.account.oauth2.client.secret.YOUR-ACCOUNT.dfs.core.windows.net</name>
+    <value>YOUR-CLIENT-SECRET</value>
+  </property>
+</configuration>
+```
+
+### Google Cloud Storage Security
+
+**Service Account Authentication:**
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account-key.json"
+```
+
+**Service Account Permissions:**
+- `storage.objects.get` - Read object data
+- `storage.objects.list` - List bucket contents
+- Limit scope to specific buckets and prefixes
+
+## Security Checklist
+
+<Accordion title="Pre-Production Security Checklist">
+
+**Authentication:**
+- [ ] Generate cryptographically secure bearer tokens
+- [ ] Configure token expiration times
+- [ ] Implement token rotation procedures
+- [ ] Set up monitoring for token usage
+
+**Encryption:**
+- [ ] Configure valid SSL/TLS certificates
+- [ ] Enable TLS 1.2 or higher
+- [ ] Verify HTTPS on all endpoints
+- [ ] Test certificate renewal process
+
+**Profile Files:**
+- [ ] Set restrictive file permissions (600)
+- [ ] Store in encrypted file systems
+- [ ] Implement access audit logging
+- [ ] Use secret management systems
+
+**Network Security:**
+- [ ] Configure firewall rules
+- [ ] Implement rate limiting
+- [ ] Set up DDoS protection
+- [ ] Enable network access logging
+
+**Cloud Storage:**
+- [ ] Use IAM roles (not static credentials)
+- [ ] Configure bucket policies with least privilege
+- [ ] Enable cloud provider security features
+- [ ] Set up access logging and monitoring
+
+**Monitoring & Audit:**
+- [ ] Enable comprehensive API access logging
+- [ ] Set up alerts for authentication failures
+- [ ] Monitor for unusual access patterns
+- [ ] Implement security incident response procedures
+
+</Accordion>
+
+## Error Handling
+
+Delta Sharing returns standard HTTP status codes for authentication errors:
+
+| Status Code | Description | Action |
+|-------------|-------------|--------|
+| 401 | Unauthenticated - bearer token missing or incorrect | Verify token in profile file |
+| 403 | Forbidden - insufficient permissions | Check recipient access grants |
+| 404 | Resource not found | Verify share/schema/table names |
+
+**Example Error Response:**
+```json
+{
+  "errorCode": "UNAUTHENTICATED_REQUEST",
+  "message": "The bearer token is missing or incorrect"
+}
+```
+
+## Additional Resources
+
+- [Delta Sharing Protocol Specification](https://github.com/delta-io/delta-sharing/blob/main/PROTOCOL.md)
+- [NGINX JWT Authentication Guide](https://docs.nginx.com/nginx/admin-guide/security-controls/configuring-jwt-authentication/)
+- [AWS S3 Security Best Practices](https://docs.aws.amazon.com/AmazonS3/latest/userguide/security-best-practices.html)
+- [Azure Storage Security Guide](https://docs.microsoft.com/azure/storage/common/storage-security-guide)
+- [OAuth 2.0 Bearer Token Specification](https://tools.ietf.org/html/rfc6750)

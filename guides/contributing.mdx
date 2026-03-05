@@ -1,0 +1,427 @@
+---
+title: Contributing
+description: Learn how to contribute to Delta Sharing - from reporting issues to submitting pull requests
+icon: code-pull-request
+---
+
+We welcome contributions to Delta Sharing! This guide covers everything you need to know about contributing to the project, from reporting bugs to submitting major features.
+
+## Before You Start
+
+Delta Sharing is an open-source project under the Apache License 2.0. We use GitHub for tracking issues and pull requests, and we follow the Delta Lake Code of Conduct.
+
+<Card title="Code of Conduct" icon="handshake" href="https://github.com/delta-io/delta/blob/master/CODE_OF_CONDUCT.md">
+  All contributors must adhere to the Delta Lake Code of Conduct to ensure a welcoming and inclusive community.
+</Card>
+
+## Ways to Contribute
+
+<CardGroup cols={2}>
+  <Card title="Report Bugs" icon="bug">
+    Found an issue? Report it on GitHub Issues
+  </Card>
+  <Card title="Fix Issues" icon="wrench">
+    Browse open issues and submit fixes
+  </Card>
+  <Card title="Add Features" icon="sparkles">
+    Propose and implement new functionality
+  </Card>
+  <Card title="Improve Docs" icon="book">
+    Enhance documentation and examples
+  </Card>
+</CardGroup>
+
+## Communication Guidelines
+
+Before starting significant work, please communicate with the community to avoid duplicated effort.
+
+### What Requires Prior Discussion?
+
+A **major feature** is defined as any change that:
+- Alters more than 100 lines of code (excluding tests)
+- Changes any user-facing behavior
+- Adds new public APIs or extensions
+- Modifies the Delta Sharing Protocol
+
+<Steps>
+  <Step title="Search existing issues">
+    Check [GitHub Issues](https://github.com/delta-io/delta-sharing/issues) to see if someone is already working on this.
+  </Step>
+  
+  <Step title="Create a GitHub issue">
+    Open a new issue describing your proposed feature or change. Include:
+    - Clear description of the problem or use case
+    - Proposed solution or approach
+    - Expected impact on existing functionality
+  </Step>
+  
+  <Step title="Discuss with maintainers">
+    Wait for feedback from the Technical Steering Committee (TSC) or other maintainers. They will:
+    - Confirm no one else is working on it
+    - Provide guidance on the approach
+    - Request a design document if needed
+  </Step>
+  
+  <Step title="Proceed with implementation">
+    Once you have agreement, proceed with your implementation.
+  </Step>
+</Steps>
+
+<Note>
+  Small patches and bug fixes don't need prior communication - you can directly submit a pull request.
+</Note>
+
+### Where to Communicate
+
+Delta Sharing uses the same community resources as Delta Lake:
+
+<CardGroup cols={2}>
+  <Card title="GitHub Issues" icon="github" href="https://github.com/delta-io/delta-sharing/issues">
+    Track bugs, features, and tasks
+  </Card>
+  <Card title="Slack" icon="slack" href="https://go.delta.io/slack">
+    Join the community for discussions
+  </Card>
+  <Card title="Mailing List" icon="envelope" href="https://groups.google.com/forum/#!forum/delta-users">
+    Ask questions and share ideas
+  </Card>
+  <Card title="Pull Requests" icon="code-pull-request" href="https://github.com/delta-io/delta-sharing/pulls">
+    Submit your code changes
+  </Card>
+</CardGroup>
+
+## Development Workflow
+
+### 1. Fork and Clone
+
+<Steps>
+  <Step title="Fork the repository">
+    Click the "Fork" button on the [Delta Sharing GitHub repository](https://github.com/delta-io/delta-sharing).
+  </Step>
+  
+  <Step title="Clone your fork">
+    ```bash
+    git clone https://github.com/YOUR_USERNAME/delta-sharing.git
+    cd delta-sharing
+    ```
+  </Step>
+  
+  <Step title="Add upstream remote">
+    ```bash
+    git remote add upstream https://github.com/delta-io/delta-sharing.git
+    ```
+  </Step>
+</Steps>
+
+### 2. Create a Branch
+
+Create a descriptive branch for your changes:
+
+```bash
+git checkout -b feature/add-new-connector
+# or
+git checkout -b fix/client-timeout-issue
+```
+
+### 3. Make Your Changes
+
+Follow the project's coding standards and best practices:
+
+<AccordionGroup>
+  <Accordion title="Scala Code Style">
+    Delta Sharing follows the [Apache Spark Scala Style Guide](https://spark.apache.org/contributing.html).
+    
+    Style checks run automatically during compilation:
+    ```bash
+    build/sbt compile  # Runs ScalaStyle checks
+    ```
+    
+    Fix any style violations before committing.
+  </Accordion>
+  
+  <Accordion title="Python Code Style">
+    Use the provided formatting and linting tools:
+    
+    ```bash
+    # Auto-format code
+    python/dev/reformat
+    
+    # Check for issues
+    python/dev/lint-python
+    ```
+  </Accordion>
+  
+  <Accordion title="Testing Requirements">
+    All code changes must include appropriate tests:
+    
+    **For Python:**
+    ```bash
+    python/dev/pytest
+    ```
+    
+    **For Scala:**
+    ```bash
+    build/sbt test
+    ```
+    
+    Ensure all existing tests pass and add new tests for your changes.
+  </Accordion>
+  
+  <Accordion title="Documentation">
+    Update documentation for any user-facing changes:
+    - Update inline code comments
+    - Add docstrings for new functions/classes
+    - Update README.md if adding new features
+    - Update PROTOCOL.md for protocol changes
+  </Accordion>
+</AccordionGroup>
+
+### 4. Commit Your Changes
+
+Follow these commit guidelines:
+
+<CodeGroup>
+```bash Good Commit Messages
+# Use imperative mood
+git commit -m "Add support for GCS presigned URLs"
+
+# Reference issue numbers
+git commit -m "Fix timeout in client connection (#123)"
+
+# Be descriptive but concise
+git commit -m "Update Delta Sharing Protocol to version 2.0
+
+This change adds support for deletion vectors and improves
+performance for large table metadata."
+```
+
+```bash Bad Commit Messages
+# Too vague
+git commit -m "fix bug"
+
+# Not descriptive
+git commit -m "update"
+
+# Too casual
+git commit -m "oops forgot this file"
+```
+</CodeGroup>
+
+### 5. Sign Your Work
+
+<Warning>
+  All contributions must be signed off to certify that you have the right to submit the code under the Apache 2.0 license.
+</Warning>
+
+Add a sign-off to your commits:
+
+```bash
+git commit -s -m "Your commit message"
+```
+
+This adds a line to your commit message:
+```
+Signed-off-by: Your Name <your.email@example.com>
+```
+
+#### Developer Certificate of Origin
+
+By signing off, you certify that:
+
+<Accordion title="Developer Certificate of Origin 1.1">
+  By making a contribution to this project, I certify that:
+  
+  (a) The contribution was created in whole or in part by me and I have the right to submit it under the open source license indicated in the file; or
+  
+  (b) The contribution is based upon previous work that, to the best of my knowledge, is covered under an appropriate open source license and I have the right under that license to submit that work with modifications, whether created in whole or in part by me, under the same open source license (unless I am permitted to submit under a different license); or
+  
+  (c) The contribution was provided directly to me by some other person who certified (a), (b) or (c) and I have not modified it.
+  
+  (d) I understand and agree that this project and the contribution are public and that a record of the contribution (including all personal information I submit with it, including my sign-off) is maintained indefinitely and may be redistributed consistent with this project or the open source license(s) involved.
+</Accordion>
+
+**Configure Git to sign automatically:**
+
+```bash
+git config user.name "Your Name"
+git config user.email "your.email@example.com"
+
+# Sign all commits by default
+git config alias.ci "commit -s"
+```
+
+### 6. Push and Create Pull Request
+
+<Steps>
+  <Step title="Push to your fork">
+    ```bash
+    git push origin feature/add-new-connector
+    ```
+  </Step>
+  
+  <Step title="Create pull request">
+    Go to the Delta Sharing repository on GitHub and click "New Pull Request".
+  </Step>
+  
+  <Step title="Fill out PR template">
+    Provide a clear description of your changes:
+    
+    - What problem does this solve?
+    - How was it tested?
+    - Are there breaking changes?
+    - Link to related issues
+  </Step>
+  
+  <Step title="Wait for review">
+    Maintainers will review your PR and may request changes.
+  </Step>
+</Steps>
+
+## Pull Request Guidelines
+
+### PR Title and Description
+
+Write clear, descriptive PR titles:
+
+<CodeGroup>
+```text Good PR Titles
+Add Python 3.11 support
+Fix memory leak in DeltaSharingClient
+Update server to support partition filtering
+```
+
+```text Bad PR Titles
+Update
+Fix
+Changes
+```
+</CodeGroup>
+
+### PR Checklist
+
+Before submitting, ensure:
+
+- [ ] Code follows the project's style guidelines
+- [ ] All tests pass locally
+- [ ] New tests added for new functionality
+- [ ] Documentation updated (if applicable)
+- [ ] Commits are signed off
+- [ ] PR description clearly explains the changes
+- [ ] Related GitHub issues are linked
+
+### Review Process
+
+<Steps>
+  <Step title="Automated checks">
+    CI/CD pipeline runs tests and style checks automatically.
+  </Step>
+  
+  <Step title="Code review">
+    Maintainers review your code and provide feedback.
+  </Step>
+  
+  <Step title="Address feedback">
+    Make requested changes and push updates to your branch.
+  </Step>
+  
+  <Step title="Approval and merge">
+    Once approved, maintainers will merge your PR.
+  </Step>
+</Steps>
+
+## Reporting Issues
+
+Found a bug or have a feature request? Create a GitHub issue.
+
+### Bug Reports
+
+Include the following information:
+
+<AccordionGroup>
+  <Accordion title="Environment Details">
+    - Delta Sharing version
+    - Python/Java/Scala version
+    - Operating system
+    - Spark version (if applicable)
+  </Accordion>
+  
+  <Accordion title="Steps to Reproduce">
+    Provide minimal code that reproduces the issue:
+    
+    ```python
+    import delta_sharing
+    
+    # Minimal reproducible example
+    client = delta_sharing.SharingClient("profile.share")
+    # Error occurs here...
+    ```
+  </Accordion>
+  
+  <Accordion title="Expected vs Actual Behavior">
+    - What did you expect to happen?
+    - What actually happened?
+    - Include error messages and stack traces
+  </Accordion>
+  
+  <Accordion title="Additional Context">
+    - Relevant logs
+    - Screenshots (if applicable)
+    - Workarounds you've tried
+  </Accordion>
+</AccordionGroup>
+
+### Feature Requests
+
+Describe your feature request:
+
+1. **Use case**: What problem does this solve?
+2. **Proposed solution**: How should it work?
+3. **Alternatives**: What other approaches did you consider?
+4. **Impact**: Who benefits from this feature?
+
+## Governance
+
+Delta Sharing is governed by the Technical Steering Committee (TSC):
+
+<CardGroup cols={3}>
+  <Card title="Michael Armbrust" icon="user">
+    michael.armbrust@gmail.com
+  </Card>
+  <Card title="Reynold Xin" icon="user">
+    reynoldx@gmail.com
+  </Card>
+  <Card title="Matei Zaharia" icon="user">
+    matei@cs.stanford.edu
+  </Card>
+</CardGroup>
+
+The TSC:
+- Reviews and approves major features
+- Makes decisions on project direction
+- Manages releases and versioning
+- Maintains the [technical charter](https://delta.io/wp-content/uploads/2019/12/delta-charter.pdf)
+
+## Getting Help
+
+Stuck or have questions?
+
+<CardGroup cols={2}>
+  <Card title="Building Guide" icon="hammer" href="/guides/building">
+    Learn how to build from source
+  </Card>
+  <Card title="Testing Guide" icon="flask" href="/guides/testing">
+    Run tests for your changes
+  </Card>
+  <Card title="Join Slack" icon="slack" href="https://go.delta.io/slack">
+    Ask the community for help
+  </Card>
+  <Card title="Browse Examples" icon="code" href="https://github.com/delta-io/delta-sharing/tree/main/examples">
+    See working examples
+  </Card>
+</CardGroup>
+
+## Recognition
+
+All contributors are recognized in the project's commit history and release notes. Significant contributors may be added to the contributors list in the repository.
+
+Thank you for contributing to Delta Sharing and helping make secure data sharing accessible to everyone!

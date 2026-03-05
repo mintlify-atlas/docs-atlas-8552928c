@@ -1,0 +1,188 @@
+---
+title: Community Ecosystem
+description: Learn about the Delta Sharing community ecosystem and how to build your own connector
+icon: users
+---
+
+## The Delta Sharing Community
+
+Delta Sharing has grown into a thriving ecosystem of community-built connectors and integrations across multiple programming languages and platforms. The open protocol specification enables developers worldwide to create connectors that allow users to access shared data from their preferred tools and languages.
+
+<img src="https://raw.githubusercontent.com/delta-io/delta-sharing/main/images/the-community.png" alt="Delta Sharing Community Connectors" width="400" />
+
+## Why Build a Community Connector?
+
+The Delta Sharing Protocol is an open REST API specification that makes it straightforward to build connectors for any platform. Community connectors extend the reach of Delta Sharing by:
+
+- **Enabling native integrations** with programming languages and tools
+- **Reducing friction** for users who want to consume shared data in their existing workflows
+- **Expanding the ecosystem** to support diverse use cases and industries
+- **Fostering innovation** through open collaboration
+
+<Note>
+All community connectors implement the [Delta Sharing Protocol](/protocol/overview), which is a simple REST API for secure data sharing.
+</Note>
+
+## Building Your Own Connector
+
+Creating a Delta Sharing connector involves implementing the protocol specification to interact with a Delta Sharing server. Here's what you need to know:
+
+### Core Components
+
+<CardGroup cols={2}>
+  <Card title="Profile File Handling" icon="file">
+    Read and parse the profile file (JSON format) containing user credentials and server endpoint information
+  </Card>
+  <Card title="REST API Client" icon="network-wired">
+    Implement HTTP client to make authenticated requests to the Delta Sharing server
+  </Card>
+  <Card title="Authentication" icon="lock">
+    Support bearer token authentication as specified in the profile file
+  </Card>
+  <Card title="Data Retrieval" icon="download">
+    Fetch table metadata, file lists, and pre-signed URLs for data access
+  </Card>
+</CardGroup>
+
+### Essential API Endpoints
+
+At minimum, a basic connector should implement these endpoints:
+
+```bash
+# List all shares
+GET /shares
+
+# List schemas in a share
+GET /shares/{share}/schemas
+
+# List tables in a schema
+GET /shares/{share}/schemas/{schema}/tables
+
+# Get table metadata
+GET /shares/{share}/schemas/{schema}/tables/{table}/metadata
+
+# Query table data
+POST /shares/{share}/schemas/{schema}/tables/{table}/query
+```
+
+<Accordion title="Profile File Format">
+The profile file is a JSON document with the following structure:
+
+```json
+{
+  "shareCredentialsVersion": 1,
+  "endpoint": "https://sharing.example.com/delta-sharing/",
+  "bearerToken": "<token>"
+}
+```
+
+Your connector should:
+1. Parse this JSON file from local filesystem or remote storage
+2. Extract the endpoint URL and bearer token
+3. Include the bearer token in all HTTP requests as: `Authorization: Bearer <token>`
+</Accordion>
+
+### Advanced Features
+
+Once you have a basic connector working, consider implementing these advanced capabilities:
+
+<CardGroup cols={2}>
+  <Card title="Change Data Feed (CDF)" icon="timeline">
+    Query table changes between versions for incremental processing
+  </Card>
+  <Card title="Time Travel" icon="clock-rotate-left">
+    Access historical versions of tables
+  </Card>
+  <Card title="Predicate Pushdown" icon="filter">
+    Send filter conditions to reduce data transfer
+  </Card>
+  <Card title="Delta Format Queries" icon="table">
+    Request data in native Delta format for optimized performance
+  </Card>
+</CardGroup>
+
+## Implementation Guidelines
+
+### 1. Start with Core Functionality
+
+Begin by implementing the essential features:
+- Reading profile files
+- Authenticating with bearer tokens  
+- Listing shares, schemas, and tables
+- Querying table metadata and snapshots
+
+### 2. Handle Pre-Signed URLs
+
+The server returns pre-signed URLs for data files. Your connector should:
+- Parse the file list from the query response
+- Download Parquet files using the pre-signed URLs
+- Handle file format conversion to your target data structure
+
+### 3. Support Common Patterns
+
+```python
+# Example: Constructing table URLs
+table_url = f"{profile_file}#{share}.{schema}.{table}"
+
+# Example: Query request body
+query_request = {
+  "limitHint": 1000,
+  "version": 0
+}
+```
+
+### 4. Error Handling
+
+Implement robust error handling for:
+- Invalid or expired bearer tokens
+- Network failures and retries
+- Malformed profile files
+- Missing or inaccessible tables
+
+### 5. Testing
+
+Test your connector against:
+- The [open example Delta Sharing Server](https://databricks-datasets-oregon.s3-us-west-2.amazonaws.com/delta-sharing/share/open-datasets.share) with sample data
+- Your own Delta Sharing Reference Server instance
+- Various table sizes and schema complexities
+
+## Contributing Back to the Community
+
+Once you've built a connector:
+
+1. **Open source it** - Share your code on GitHub with an Apache 2.0 or similar permissive license
+2. **Document your connector** - Include clear installation and usage instructions
+3. **Submit a PR** - Add your connector to the Delta Sharing README
+4. **Engage with users** - Respond to issues and feature requests
+5. **Join the community** - Connect on [Slack](https://go.delta.io/slack) and the [mailing list](https://groups.google.com/forum/#!forum/delta-users)
+
+<Note>
+To add your connector to the official list, open a pull request on the [Delta Sharing GitHub repository](https://github.com/delta-io/delta-sharing) updating the community connectors table.
+</Note>
+
+## Resources
+
+<CardGroup cols={2}>
+  <Card title="Protocol Specification" icon="book" href="/protocol/overview">
+    Full technical specification of the Delta Sharing Protocol
+  </Card>
+  <Card title="Reference Server" icon="server" href="/reference-server/setup">
+    Set up your own Delta Sharing server for testing
+  </Card>
+  <Card title="Example Connectors" icon="code" href="/community/connectors">
+    Browse existing community connectors for inspiration
+  </Card>
+  <Card title="GitHub Repository" icon="github" href="https://github.com/delta-io/delta-sharing">
+    View source code and submit contributions
+  </Card>
+</CardGroup>
+
+## Getting Help
+
+Need assistance building your connector?
+
+- **Slack**: Join [#delta-sharing](https://delta-users.slack.com/) on the Delta Users Slack
+- **Mailing List**: Post questions to [delta-users@googlegroups.com](https://groups.google.com/forum/#!forum/delta-users)
+- **GitHub Issues**: Report bugs or request features at [delta-io/delta-sharing](https://github.com/delta-io/delta-sharing/issues)
+
+The Delta Sharing community is here to help you succeed!

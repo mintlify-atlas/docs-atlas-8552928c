@@ -1,0 +1,310 @@
+---
+title: 'Installing the Reference Server'
+description: 'Download and install the Delta Sharing Reference Server'
+---
+
+## Prerequisites
+
+Before installing the Delta Sharing Reference Server, ensure you have:
+
+<CardGroup cols={2}>
+  <Card title="Java Runtime" icon="java">
+    Java 8 or higher installed on your system
+  </Card>
+  <Card title="Cloud Storage Access" icon="cloud">
+    Access credentials for your cloud storage (S3, Azure, GCS, or R2)
+  </Card>
+  <Card title="Delta Lake Tables" icon="table">
+    Delta Lake or Parquet tables stored on cloud storage
+  </Card>
+  <Card title="Network Access" icon="network-wired">
+    Ability to open a port for the server (default: 8080)
+  </Card>
+</CardGroup>
+
+### Verify Java Installation
+
+Check your Java version:
+
+```bash
+java -version
+```
+
+You should see output indicating Java 8 or higher. If Java is not installed, download it from:
+- [OpenJDK](https://openjdk.org/install/)
+- [Oracle Java](https://www.oracle.com/java/technologies/downloads/)
+- [Amazon Corretto](https://aws.amazon.com/corretto/)
+
+## Download the Server
+
+The pre-built Delta Sharing Server package is available from the official GitHub releases page.
+
+<Steps>
+  <Step title="Navigate to GitHub Releases">
+    Visit the [Delta Sharing GitHub Releases](https://github.com/delta-io/delta-sharing/releases) page
+  </Step>
+  
+  <Step title="Download the Latest Package">
+    Download the file named `delta-sharing-server-x.y.z.zip` from the latest release
+    
+    For example, to download version 0.7.8:
+    
+    ```bash
+    wget https://github.com/delta-io/delta-sharing/releases/download/v0.7.8/delta-sharing-server-0.7.8.zip
+    ```
+    
+    <Note>
+      Replace `0.7.8` with the latest version number from the releases page
+    </Note>
+  </Step>
+  
+  <Step title="Verify the Download">
+    Ensure the file downloaded successfully:
+    
+    ```bash
+    ls -lh delta-sharing-server-*.zip
+    ```
+  </Step>
+</Steps>
+
+## Extract the Package
+
+Once downloaded, extract the server package:
+
+```bash
+unzip delta-sharing-server-0.7.8.zip
+```
+
+This creates a directory structure like:
+
+```
+delta-sharing-server-0.7.8/
+├── bin/
+│   ├── delta-sharing-server       # Unix/Linux startup script
+│   └── delta-sharing-server.bat   # Windows startup script
+├── conf/
+│   └── delta-sharing-server.yaml.template
+├── lib/
+│   └── *.jar                       # Server dependencies
+└── README.md
+```
+
+<Accordion title="Directory Structure Explained">
+  - **bin/**: Contains startup scripts for different operating systems
+  - **conf/**: Configuration directory for server settings and cloud credentials
+  - **lib/**: Java libraries and dependencies required by the server
+  - **README.md**: Quick reference documentation
+</Accordion>
+
+## Move to Installation Directory
+
+Move the extracted directory to your preferred installation location:
+
+```bash
+sudo mv delta-sharing-server-0.7.8 /opt/delta-sharing-server
+```
+
+Or keep it in your home directory:
+
+```bash
+mv delta-sharing-server-0.7.8 ~/delta-sharing-server
+```
+
+## Verify Installation
+
+Verify the installation by checking the server version:
+
+```bash
+cd /opt/delta-sharing-server
+./bin/delta-sharing-server --version
+```
+
+<Warning>
+  If you encounter permission errors, ensure the startup script is executable:
+  
+  ```bash
+  chmod +x bin/delta-sharing-server
+  ```
+</Warning>
+
+## Installation Methods Comparison
+
+<Tabs>
+  <Tab title="Pre-built Package">
+    **Pros:**
+    - Quick and easy installation
+    - No build tools required
+    - Stable, tested releases
+    
+    **Cons:**
+    - Less flexible for customization
+    - Requires manual updates
+    
+    **Best for:** Most users, production-like environments
+  </Tab>
+  
+  <Tab title="Docker">
+    **Pros:**
+    - Isolated environment
+    - Easy deployment and scaling
+    - Consistent across systems
+    
+    **Cons:**
+    - Requires Docker installation
+    - Additional complexity for configuration
+    
+    **Best for:** Containerized environments, Kubernetes deployments
+    
+    See [Docker deployment guide](/server/docker) for details.
+  </Tab>
+  
+  <Tab title="Build from Source">
+    **Pros:**
+    - Latest development features
+    - Full customization
+    - Contribute to development
+    
+    **Cons:**
+    - Requires Scala/SBT knowledge
+    - Build dependencies needed
+    - May be unstable
+    
+    **Best for:** Developers, contributors, advanced users
+    
+    See the [Building from Source](#building-from-source) section below.
+  </Tab>
+</Tabs>
+
+## Building from Source (Optional)
+
+For developers or users who need the latest features:
+
+<Steps>
+  <Step title="Clone the Repository">
+    ```bash
+    git clone https://github.com/delta-io/delta-sharing.git
+    cd delta-sharing
+    ```
+  </Step>
+  
+  <Step title="Build the Server Package">
+    ```bash
+    build/sbt server/universal:packageBin
+    ```
+    
+    This generates `server/target/universal/delta-sharing-server-x.y.z.zip`
+  </Step>
+  
+  <Step title="Extract and Install">
+    ```bash
+    cd server/target/universal
+    unzip delta-sharing-server-*.zip
+    sudo mv delta-sharing-server-* /opt/delta-sharing-server
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  Building from source requires:
+  - JDK 8 or higher
+  - SBT (Scala Build Tool)
+  - Git
+</Note>
+
+## System Service Setup (Optional)
+
+For production deployments, configure the server as a system service:
+
+<Tabs>
+  <Tab title="systemd (Linux)">
+    Create a service file at `/etc/systemd/system/delta-sharing-server.service`:
+    
+    ```ini
+    [Unit]
+    Description=Delta Sharing Reference Server
+    After=network.target
+    
+    [Service]
+    Type=simple
+    User=delta-sharing
+    WorkingDirectory=/opt/delta-sharing-server
+    ExecStart=/opt/delta-sharing-server/bin/delta-sharing-server -- --config /opt/delta-sharing-server/conf/delta-sharing-server.yaml
+    Restart=on-failure
+    RestartSec=10
+    
+    [Install]
+    WantedBy=multi-user.target
+    ```
+    
+    Enable and start the service:
+    
+    ```bash
+    sudo systemctl daemon-reload
+    sudo systemctl enable delta-sharing-server
+    sudo systemctl start delta-sharing-server
+    sudo systemctl status delta-sharing-server
+    ```
+  </Tab>
+  
+  <Tab title="init.d (Older Linux)">
+    Create a script at `/etc/init.d/delta-sharing-server`:
+    
+    ```bash
+    #!/bin/bash
+    # chkconfig: 345 99 01
+    # description: Delta Sharing Server
+    
+    DAEMON_PATH="/opt/delta-sharing-server"
+    DAEMON="$DAEMON_PATH/bin/delta-sharing-server"
+    CONFIG="$DAEMON_PATH/conf/delta-sharing-server.yaml"
+    
+    case "$1" in
+      start)
+        echo "Starting Delta Sharing Server"
+        cd $DAEMON_PATH
+        $DAEMON -- --config $CONFIG &
+        ;;
+      stop)
+        echo "Stopping Delta Sharing Server"
+        pkill -f delta-sharing-server
+        ;;
+      restart)
+        $0 stop
+        sleep 2
+        $0 start
+        ;;
+      *)
+        echo "Usage: $0 {start|stop|restart}"
+        exit 1
+    esac
+    exit 0
+    ```
+    
+    Make it executable and enable:
+    
+    ```bash
+    sudo chmod +x /etc/init.d/delta-sharing-server
+    sudo chkconfig --add delta-sharing-server
+    sudo service delta-sharing-server start
+    ```
+  </Tab>
+</Tabs>
+
+## Next Steps
+
+Now that the server is installed:
+
+<CardGroup cols={2}>
+  <Card title="Configure the Server" icon="gear" href="/server/configuration">
+    Set up shares, schemas, and tables
+  </Card>
+  <Card title="Cloud Storage Setup" icon="cloud" href="/server/cloud-storage">
+    Configure cloud storage authentication
+  </Card>
+  <Card title="Set Up Authorization" icon="shield" href="/server/authorization">
+    Secure your server with authentication
+  </Card>
+  <Card title="Docker Deployment" icon="docker" href="/server/docker">
+    Use the pre-built Docker image instead
+  </Card>
+</CardGroup>

@@ -1,0 +1,562 @@
+---
+title: 'Authorization & Security'
+description: 'Secure your Delta Sharing server with bearer tokens and JWT authentication'
+---
+
+## Overview
+
+The Delta Sharing Reference Server provides basic authorization through bearer token authentication. For production deployments, we strongly recommend placing the server behind a secure proxy with advanced authentication mechanisms.
+
+<Warning>
+  The reference server is **not a production-ready secure web server**. It's designed for development and testing. Always use additional security layers for production deployments.
+</Warning>
+
+## Bearer Token Authentication
+
+The server supports a simple bearer token authentication mechanism where clients must provide a pre-configured token in the `Authorization` header.
+
+### Configuring Bearer Tokens
+
+Add the authorization section to your server configuration file:
+
+```yaml conf/delta-sharing-server.yaml
+version: 1
+
+shares:
+  - name: "my_share"
+    schemas:
+      - name: "my_schema"
+        tables:
+          - name: "my_table"
+            location: "s3a://bucket/table"
+            id: "00000000-0000-0000-0000-000000000000"
+
+# Authorization configuration
+authorization:
+  bearerToken: "dapi1234567890abcdefghijklmnopqrstuvwxyz"
+
+host: "localhost"
+port: 8080
+endpoint: "/delta-sharing"
+```
+
+<ParamField path="authorization.bearerToken" type="string">
+  The secret token that clients must provide to access the server. Generate a strong, random token for production use.
+</ParamField>
+
+### Generating Secure Tokens
+
+Create a cryptographically secure bearer token:
+
+<CodeGroup>
+```bash Linux/macOS
+# Generate a random 32-byte token
+openssl rand -hex 32
+
+# Or use Python
+python3 -c "import secrets; print('dapi' + secrets.token_hex(32))"
+```
+
+```bash Windows (PowerShell)
+# Generate a random token
+-join ((48..57) + (65..90) + (97..122) | Get-Random -Count 64 | ForEach-Object {[char]$_})
+```
+
+```python Python
+import secrets
+
+# Generate a secure token with 'dapi' prefix
+token = f"dapi{secrets.token_hex(32)}"
+print(token)
+```
+</CodeGroup>
+
+<Note>
+  Using a `dapi` prefix is a Databricks convention but not required. Choose any prefix that helps identify your tokens.
+</Note>
+
+### Client Authentication
+
+Clients must include the bearer token in all requests:
+
+```bash
+curl -H "Authorization: Bearer dapi1234567890abcdefghijklmnopqrstuvwxyz" \
+  http://localhost:8080/delta-sharing/shares
+```
+
+In profile files, the token is stored in the `bearerToken` field:
+
+```json profile.share
+{
+  "shareCredentialsVersion": 1,
+  "endpoint": "http://localhost:8080/delta-sharing",
+  "bearerToken": "dapi1234567890abcdefghijklmnopqrstuvwxyz"
+}
+```
+
+## No Authorization Mode
+
+If you **do not** configure a bearer token in the server YAML file, all requests will be accepted without authorization.
+
+```yaml conf/delta-sharing-server.yaml
+version: 1
+shares:
+  - name: "public_share"
+    # ...
+
+host: "localhost"
+port: 8080
+endpoint: "/delta-sharing"
+
+# No authorization section = no authentication required
+```
+
+<Warning>
+  **Never run the server without authorization on a public network!** This mode should only be used for:
+  - Local development
+  - Testing
+  - Networks with external security controls
+</Warning>
+
+## Using Environment Variables
+
+Avoid hardcoding tokens in configuration files by using environment variables:
+
+### Option 1: Bash Substitution
+
+Set the token as an environment variable:
+
+```bash
+export DELTA_SHARING_TOKEN="dapi1234567890abcdefghijklmnopqrstuvwxyz"
+
+# Use in config with bash substitution
+envsubst < conf/delta-sharing-server.yaml.template > conf/delta-sharing-server.yaml
+```
+
+Template file:
+
+```yaml conf/delta-sharing-server.yaml.template
+authorization:
+  bearerToken: "${DELTA_SHARING_TOKEN}"
+```
+
+### Option 2: Docker Environment Variables
+
+When using Docker, pass the token as an environment variable:
+
+```bash
+docker run -p 8080:8080 \
+  -e BEARER_TOKEN="dapi1234567890abcdefghijklmnopqrstuvwxyz" \
+  --mount type=bind,source=$(pwd)/conf/delta-sharing-server.yaml,target=/config/delta-sharing-server-config.yaml \
+  deltaio/delta-sharing-server:0.7.8 -- --config /config/delta-sharing-server-config.yaml
+```
+
+## JWT Authentication with NGINX Proxy
+
+For production deployments, use a reverse proxy like NGINX with JWT authentication.
+
+### Why Use JWT Authentication?
+
+<AccordionGroup>
+  <Accordion title="Token Expiration">
+    JWTs can include expiration times, automatically invalidating old tokens without server-side state.
+  </Accordion>
+  
+  <Accordion title="Fine-Grained Claims">
+    Embed user identity, permissions, and other metadata in the token for access control.
+  </Accordion>
+  
+  <Accordion title="Centralized Auth">
+    Integrate with existing identity providers (Okta, Auth0, Azure AD, etc.).
+  </Accordion>
+  
+  <Accordion title="Audit Logging">
+    Track which users access which resources with embedded user information.
+  </Accordion>
+</AccordionGroup>
+
+### NGINX JWT Configuration
+
+<Steps>
+  <Step title="Install NGINX Plus or Use OpenResty">
+    JWT authentication is available in:
+    - **NGINX Plus** (commercial): Built-in JWT module
+    - **OpenResty**: Free, open-source with `lua-resty-jwt` library
+    
+    For this example, we'll use OpenResty:
+    
+    ```bash
+    # Ubuntu/Debian
+    sudo apt-get install openresty
+    
+    # macOS
+    brew install openresty/brew/openresty
+    ```
+  </Step>
+  
+  <Step title="Install lua-resty-jwt">
+    ```bash
+    luarocks install lua-resty-jwt
+    ```
+  </Step>
+  
+  <Step title="Configure NGINX">
+    Create an NGINX configuration file:
+    
+    ```nginx /etc/openresty/nginx.conf
+    http {
+      server {
+        listen 443 ssl;
+        server_name delta-sharing.example.com;
+        
+        ssl_certificate /etc/ssl/certs/server.crt;
+        ssl_certificate_key /etc/ssl/private/server.key;
+        
+        # JWT validation
+        location / {
+          access_by_lua_block {
+            local jwt = require "resty.jwt"
+            local jwt_secret = os.getenv("JWT_SECRET")
+            
+            -- Extract JWT from Authorization header
+            local auth_header = ngx.var.http_Authorization
+            if not auth_header then
+              ngx.status = 401
+              ngx.say("Missing Authorization header")
+              return ngx.exit(401)
+            end
+            
+            local token = auth_header:match("Bearer%s+(.+)")
+            if not token then
+              ngx.status = 401
+              ngx.say("Invalid Authorization header format")
+              return ngx.exit(401)
+            end
+            
+            -- Verify JWT
+            local jwt_obj = jwt:verify(jwt_secret, token)
+            if not jwt_obj.verified then
+              ngx.status = 401
+              ngx.say("Invalid or expired token")
+              return ngx.exit(401)
+            end
+            
+            -- Optional: Check custom claims
+            if jwt_obj.payload.service ~= "delta-sharing" then
+              ngx.status = 403
+              ngx.say("Token not valid for this service")
+              return ngx.exit(403)
+            end
+          }
+          
+          # Proxy to Delta Sharing server
+          proxy_pass http://localhost:8080;
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+        }
+      }
+    }
+    ```
+  </Step>
+  
+  <Step title="Start NGINX and Delta Sharing Server">
+    ```bash
+    # Start Delta Sharing server (without bearer token)
+    ./bin/delta-sharing-server -- --config conf/delta-sharing-server.yaml
+    
+    # Start NGINX with JWT secret
+    export JWT_SECRET="your-jwt-secret-key"
+    sudo openresty -c /etc/openresty/nginx.conf
+    ```
+  </Step>
+</Steps>
+
+### NGINX Plus JWT Configuration
+
+If you're using NGINX Plus, the configuration is simpler:
+
+```nginx
+http {
+  # Define JWT key
+  map $jwt_claim_sub $jwt_subject {
+    default "$jwt_claim_sub";
+  }
+  
+  server {
+    listen 443 ssl;
+    server_name delta-sharing.example.com;
+    
+    ssl_certificate /etc/ssl/certs/server.crt;
+    ssl_certificate_key /etc/ssl/private/server.key;
+    
+    location / {
+      auth_jwt "Delta Sharing";
+      auth_jwt_key_file /etc/nginx/jwt_secret.key;
+      
+      # Optional: Validate custom claims
+      if ($jwt_claim_service != "delta-sharing") {
+        return 403;
+      }
+      
+      proxy_pass http://localhost:8080;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-User-ID $jwt_claim_sub;
+    }
+  }
+}
+```
+
+## API Gateway Integration
+
+For cloud deployments, use managed API gateways:
+
+<Tabs>
+  <Tab title="AWS API Gateway">
+    1. Create an API Gateway in front of your Delta Sharing server
+    2. Configure a Lambda authorizer or Cognito user pool
+    3. Use API Gateway's built-in throttling and monitoring
+    
+    ```yaml AWS SAM Template
+    Resources:
+      DeltaSharingApi:
+        Type: AWS::ApiGatewayV2::Api
+        Properties:
+          Name: DeltaSharingAPI
+          ProtocolType: HTTP
+      
+      Authorizer:
+        Type: AWS::ApiGatewayV2::Authorizer
+        Properties:
+          ApiId: !Ref DeltaSharingApi
+          AuthorizerType: JWT
+          IdentitySource:
+            - $request.header.Authorization
+          JwtConfiguration:
+            Issuer: https://cognito-idp.us-east-1.amazonaws.com/us-east-1_xxxxx
+            Audience:
+              - your-client-id
+    ```
+  </Tab>
+  
+  <Tab title="Azure API Management">
+    1. Create an API Management instance
+    2. Import your Delta Sharing server as a backend
+    3. Configure JWT validation policy
+    
+    ```xml
+    <inbound>
+      <validate-jwt header-name="Authorization" failed-validation-httpcode="401">
+        <openid-config url="https://login.microsoftonline.com/{tenant}/.well-known/openid-configuration" />
+        <required-claims>
+          <claim name="aud">
+            <value>your-app-id</value>
+          </claim>
+        </required-claims>
+      </validate-jwt>
+    </inbound>
+    ```
+  </Tab>
+  
+  <Tab title="Google Cloud Endpoints">
+    1. Deploy Delta Sharing server to Cloud Run or GCE
+    2. Configure Cloud Endpoints with OpenAPI spec
+    3. Enable JWT authentication
+    
+    ```yaml openapi.yaml
+    securityDefinitions:
+      firebase:
+        authorizationUrl: ""
+        flow: "implicit"
+        type: "oauth2"
+        x-google-issuer: "https://securetoken.google.com/your-project"
+        x-google-jwks_uri: "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com"
+    ```
+  </Tab>
+</Tabs>
+
+## TLS/SSL Configuration
+
+Always use HTTPS in production to encrypt data in transit.
+
+<Warning>
+  The reference server does not natively support TLS. Use a reverse proxy (NGINX, Apache, or cloud load balancer) to terminate SSL.
+</Warning>
+
+### NGINX SSL Termination
+
+```nginx
+server {
+  listen 443 ssl http2;
+  server_name delta-sharing.example.com;
+  
+  # SSL certificates
+  ssl_certificate /etc/ssl/certs/delta-sharing.crt;
+  ssl_certificate_key /etc/ssl/private/delta-sharing.key;
+  
+  # Modern SSL configuration
+  ssl_protocols TLSv1.2 TLSv1.3;
+  ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256';
+  ssl_prefer_server_ciphers off;
+  
+  # HSTS
+  add_header Strict-Transport-Security "max-age=63072000" always;
+  
+  location / {
+    proxy_pass http://localhost:8080;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
+}
+
+# Redirect HTTP to HTTPS
+server {
+  listen 80;
+  server_name delta-sharing.example.com;
+  return 301 https://$server_name$request_uri;
+}
+```
+
+## Security Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use Strong Tokens" icon="key">
+    Generate cryptographically random bearer tokens with at least 128 bits of entropy
+  </Card>
+  
+  <Card title="Rotate Tokens Regularly" icon="rotate">
+    Change bearer tokens periodically and after any security incident
+  </Card>
+  
+  <Card title="Use HTTPS" icon="lock">
+    Always use TLS/SSL encryption for all communications
+  </Card>
+  
+  <Card title="Implement Rate Limiting" icon="gauge">
+    Use NGINX or API Gateway to prevent abuse and DDoS attacks
+  </Card>
+  
+  <Card title="Monitor Access" icon="eye">
+    Log all requests and set up alerts for suspicious activity
+  </Card>
+  
+  <Card title="Network Isolation" icon="network-wired">
+    Run the server in a private network, only accessible through a secure proxy
+  </Card>
+  
+  <Card title="Principle of Least Privilege" icon="shield-halved">
+    Grant minimal cloud storage permissions required for operation
+  </Card>
+  
+  <Card title="Audit Configurations" icon="clipboard-check">
+    Regularly review who has access and what data is shared
+  </Card>
+</CardGroup>
+
+## Monitoring and Logging
+
+Enable comprehensive logging for security auditing:
+
+```nginx NGINX Access Logging
+log_format delta_sharing '$remote_addr - $jwt_claim_sub [$time_local] '
+                        '"$request" $status $body_bytes_sent '
+                        '"$http_referer" "$http_user_agent" '
+                        '$request_time';
+
+access_log /var/log/nginx/delta-sharing-access.log delta_sharing;
+error_log /var/log/nginx/delta-sharing-error.log warn;
+```
+
+Integrate with log aggregation tools:
+- **ELK Stack** (Elasticsearch, Logstash, Kibana)
+- **Splunk**
+- **Datadog**
+- **CloudWatch Logs** (AWS)
+- **Azure Monitor** (Azure)
+- **Cloud Logging** (GCP)
+
+## Multi-Tenant Authorization
+
+For sharing different data with different recipients:
+
+<Steps>
+  <Step title="Use Separate Server Instances">
+    Deploy multiple server instances, each with its own configuration and bearer token
+  </Step>
+  
+  <Step title="Or Use JWT Claims">
+    Implement custom authorization logic in NGINX/API Gateway based on JWT claims
+    
+    ```lua NGINX Lua Example
+    -- Check if user has access to requested share
+    local allowed_shares = jwt_obj.payload.shares or {}
+    local requested_share = ngx.var.uri:match("/shares/([^/]+)")
+    
+    local has_access = false
+    for _, share in ipairs(allowed_shares) do
+      if share == requested_share then
+        has_access = true
+        break
+      end
+    end
+    
+    if not has_access then
+      ngx.status = 403
+      ngx.say("Access denied to this share")
+      return ngx.exit(403)
+    end
+    ```
+  </Step>
+  
+  <Step title="Or Use a Custom Proxy">
+    Build a custom proxy service that implements fine-grained access control before forwarding to the Delta Sharing server
+  </Step>
+</Steps>
+
+## Compliance Considerations
+
+For regulated industries:
+
+<AccordionGroup>
+  <Accordion title="GDPR Compliance">
+    - Log all data access for audit trails
+    - Implement token revocation mechanisms
+    - Ensure right to deletion by removing tables from shares
+    - Use encryption in transit and at rest
+  </Accordion>
+  
+  <Accordion title="HIPAA Compliance">
+    - Use Business Associate Agreements (BAAs) with cloud providers
+    - Enable comprehensive audit logging
+    - Implement strong authentication (JWT, not just bearer tokens)
+    - Encrypt all data in transit with TLS 1.2+
+  </Accordion>
+  
+  <Accordion title="SOC 2 Compliance">
+    - Document security controls and configurations
+    - Implement automated security monitoring
+    - Regular security reviews and token rotation
+    - Incident response procedures
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Run with Docker" icon="docker" href="/server/docker">
+    Deploy the server using Docker containers
+  </Card>
+  <Card title="Create Profile Files" icon="id-card" href="/protocol/profile-files">
+    Generate profile files for recipients
+  </Card>
+  <Card title="Client Quickstart" icon="terminal" href="/clients/python/quickstart">
+    Test your server with client libraries
+  </Card>
+  <Card title="Protocol Reference" icon="book" href="/protocol/overview">
+    Understand the Delta Sharing Protocol
+  </Card>
+</CardGroup>

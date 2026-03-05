@@ -1,0 +1,228 @@
+---
+title: List Tables
+description: List all tables within a schema
+---
+
+This API returns a paginated list of tables contained within a specific schema. Each table represents a Delta Lake table or view.
+
+## Request
+
+<ParamField path="method" type="string" required>
+  GET
+</ParamField>
+
+<ParamField path="url" type="string" required>
+  `{prefix}/shares/{share}/schemas/{schema}/tables`
+</ParamField>
+
+### Headers
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token for authentication
+  ```
+  Authorization: Bearer {token}
+  ```
+</ParamField>
+
+### URL Parameters
+
+<ParamField path="share" type="string" required>
+  The share name to query. This parameter is case-insensitive.
+</ParamField>
+
+<ParamField path="schema" type="string" required>
+  The schema name to query. This parameter is case-insensitive.
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="maxResults" type="Int32">
+  The maximum number of results per page that should be returned.
+  
+  - Must be non-negative
+  - 0 will return no results but `nextPageToken` may be populated
+  - Server may return fewer items even if more are available
+</ParamField>
+
+<ParamField query="pageToken" type="String">
+  Specifies a page token to use. Set to the `nextPageToken` returned by a previous list request to get the next page of results.
+</ParamField>
+
+## Response
+
+<ResponseField name="items" type="array">
+  Array of table objects. May be an empty array or missing when no results are found.
+  
+  <Expandable title="Table Object">
+    <ResponseField name="name" type="string" required>
+      Table name (case-insensitive). Must not exceed 255 characters.
+    </ResponseField>
+    
+    <ResponseField name="schema" type="string" required>
+      The parent schema name. Must not exceed 255 characters.
+    </ResponseField>
+    
+    <ResponseField name="share" type="string" required>
+      The parent share name. Must not exceed 255 characters.
+    </ResponseField>
+    
+    <ResponseField name="shareId" type="string">
+      Unique identifier for the parent share. Should be immutable through the share's lifecycle.
+    </ResponseField>
+    
+    <ResponseField name="id" type="string">
+      Unique identifier for the table within the share. Should be immutable through the table's lifecycle. Format recommendation: UUID.
+    </ResponseField>
+    
+    <ResponseField name="location" type="string">
+      Root directory of the table where the delta log exists. Required if the server supports directory-based access (`dir` in `accessModes`).
+    </ResponseField>
+    
+    <ResponseField name="auxiliaryLocations" type="array">
+      Optional array of extra storage locations for table files. Usually no more than one location. Required for tables with files stored outside the root directory.
+    </ResponseField>
+    
+    <ResponseField name="accessModes" type="array">
+      Supported access modes for the table. Can include:
+      - `url`: Server supports URL-based access via QueryTable API
+      - `dir`: Server supports directory-based access via GenerateTemporaryTableCredential API
+      
+      If not present, client assumes only URL-based access is supported.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="nextPageToken" type="string">
+  Token for retrieving the next page of results. May be an empty string or missing when there are no additional results.
+</ResponseField>
+
+## Example Request
+
+<CodeGroup>
+```bash cURL
+curl -X GET \
+  '{prefix}/shares/vaccine_share/schemas/acme_vaccine_data/tables?maxResults=10' \
+  -H 'Authorization: Bearer {token}'
+```
+
+```python Python
+import requests
+
+url = "{prefix}/shares/vaccine_share/schemas/acme_vaccine_data/tables"
+headers = {
+    "Authorization": "Bearer {token}"
+}
+params = {
+    "maxResults": 10
+}
+
+response = requests.get(url, headers=headers, params=params)
+tables = response.json()
+```
+
+```javascript JavaScript
+const response = await fetch(
+  '{prefix}/shares/vaccine_share/schemas/acme_vaccine_data/tables?maxResults=10',
+  {
+    method: 'GET',
+    headers: {
+      'Authorization': 'Bearer {token}'
+    }
+  }
+);
+
+const tables = await response.json();
+```
+</CodeGroup>
+
+## Example Response
+
+```json
+{
+  "items": [
+    {
+      "share": "vaccine_share",
+      "schema": "acme_vaccine_data",
+      "name": "vaccine_ingredients",
+      "shareId": "edacc4a7-6600-4fbb-85f3-a62a5ce6761f",
+      "id": "dcb1e680-7da4-4041-9be8-88aff508d001"
+    },
+    {
+      "share": "vaccine_share",
+      "schema": "acme_vaccine_data",
+      "name": "vaccine_patients",
+      "shareId": "edacc4a7-6600-4fbb-85f3-a62a5ce6761f",
+      "id": "c48f3e19-2c29-4ea3-b6f7-3899e53338fa"
+    }
+  ],
+  "nextPageToken": "..."
+}
+```
+
+## Error Responses
+
+<Expandable title="400 - Bad Request">
+  The request is malformed.
+  
+  ```json
+  {
+    "errorCode": "string",
+    "message": "string"
+  }
+  ```
+</Expandable>
+
+<Expandable title="401 - Unauthorized">
+  The bearer token is missing or incorrect.
+  
+  ```json
+  {
+    "errorCode": "string",
+    "message": "string"
+  }
+  ```
+</Expandable>
+
+<Expandable title="403 - Forbidden">
+  The request is forbidden from being fulfilled.
+  
+  ```json
+  {
+    "errorCode": "string",
+    "message": "string"
+  }
+  ```
+</Expandable>
+
+<Expandable title="404 - Not Found">
+  The requested resource does not exist.
+  
+  ```json
+  {
+    "errorCode": "string",
+    "message": "string"
+  }
+  ```
+</Expandable>
+
+<Expandable title="500 - Internal Server Error">
+  The request is not handled correctly due to a server error.
+  
+  ```json
+  {
+    "errorCode": "string",
+    "message": "string"
+  }
+  ```
+</Expandable>
+
+## Access Modes
+
+<Note>
+  The `accessModes` field indicates how clients can access table data:
+  
+  - **URL-based access** (`url`): Server returns pre-signed URLs for individual files
+  - **Directory-based access** (`dir`): Server issues temporary cloud credentials for direct storage access
+  
+  If `accessModes` is not present, assume URL-based access only.
+</Note>

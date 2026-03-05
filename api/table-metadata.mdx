@@ -1,0 +1,301 @@
+---
+title: Query Table Metadata
+description: Retrieve table schema and metadata information
+---
+
+This API returns the schema and metadata for a Delta Sharing table without retrieving the actual data files. Use this to inspect table structure, partitioning, and configuration.
+
+## Request
+
+<ParamField path="method" type="string" required>
+  GET
+</ParamField>
+
+<ParamField path="url" type="string" required>
+  `{prefix}/shares/{share}/schemas/{schema}/tables/{table}/metadata`
+</ParamField>
+
+### Headers
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token for authentication
+  ```
+  Authorization: Bearer {token}
+  ```
+</ParamField>
+
+<ParamField header="delta-sharing-capabilities" type="string">
+  Optional capabilities header for advanced features:
+  ```
+  delta-sharing-capabilities: responseformat=delta;readerfeatures=deletionvectors
+  ```
+  
+  See [Delta Sharing Capabilities](/protocol/overview#delta-sharing-capabilities) for details.
+</ParamField>
+
+### URL Parameters
+
+<ParamField path="share" type="string" required>
+  The share name to query. This parameter is case-insensitive.
+</ParamField>
+
+<ParamField path="schema" type="string" required>
+  The schema name to query. This parameter is case-insensitive.
+</ParamField>
+
+<ParamField path="table" type="string" required>
+  The table name to query. This parameter is case-insensitive.
+</ParamField>
+
+## Response
+
+### Headers
+
+<ResponseField name="Content-Type" type="string">
+  ```
+  Content-Type: application/x-ndjson; charset=utf-8
+  ```
+</ResponseField>
+
+<ResponseField name="Delta-Table-Version" type="Long">
+  Current table version number
+</ResponseField>
+
+### Response Body
+
+The response contains exactly two lines of newline-delimited JSON:
+
+<ResponseField name="protocol" type="object" required>
+  First line: Protocol version information
+  
+  <Expandable title="Protocol Fields">
+    <ResponseField name="minReaderVersion" type="integer">
+      Minimum reader version required to read this table
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="metaData" type="object" required>
+  Second line: Complete table metadata
+  
+  <Expandable title="Metadata Fields">
+    <ResponseField name="id" type="string" required>
+      Unique table identifier (UUID format)
+    </ResponseField>
+    
+    <ResponseField name="location" type="string">
+      Root location of the table (e.g., S3 bucket path)
+    </ResponseField>
+    
+    <ResponseField name="auxiliaryLocations" type="array">
+      Additional storage locations for table files. Most tables only use the root location.
+    </ResponseField>
+    
+    <ResponseField name="accessModes" type="array">
+      Supported access modes for the table:
+      - `url`: URL-based access
+      - `dir`: Directory-based access
+    </ResponseField>
+    
+    <ResponseField name="format" type="object" required>
+      File format specification
+      
+      <Expandable title="Format Fields">
+        <ResponseField name="provider" type="string">
+          Format provider (typically `"parquet"`)
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+    
+    <ResponseField name="schemaString" type="string" required>
+      JSON-encoded Delta Lake schema definition. Describes the table's columns, data types, and nullability.
+      
+      Example structure:
+      ```json
+      {
+        "type": "struct",
+        "fields": [
+          {
+            "name": "eventTime",
+            "type": "timestamp",
+            "nullable": true,
+            "metadata": {}
+          },
+          {
+            "name": "date",
+            "type": "date",
+            "nullable": true,
+            "metadata": {}
+          }
+        ]
+      }
+      ```
+    </ResponseField>
+    
+    <ResponseField name="partitionColumns" type="array">
+      Array of column names used for partitioning
+    </ResponseField>
+    
+    <ResponseField name="configuration" type="object">
+      Table configuration properties (e.g., `{"enableChangeDataFeed": "true"}`)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Example Request
+
+<CodeGroup>
+```bash cURL
+curl -X GET \
+  '{prefix}/shares/share_name/schemas/schema_name/tables/table_name/metadata' \
+  -H 'Authorization: Bearer {token}'
+```
+
+```python Python
+import requests
+import json
+
+url = "{prefix}/shares/share_name/schemas/schema_name/tables/table_name/metadata"
+headers = {
+    "Authorization": "Bearer {token}"
+}
+
+response = requests.get(url, headers=headers)
+
+# Parse NDJSON response
+lines = response.text.strip().split('\n')
+protocol = json.loads(lines[0])
+metadata = json.loads(lines[1])
+
+print(f"Table version: {response.headers['Delta-Table-Version']}")
+print(f"Schema: {metadata['metaData']['schemaString']}")
+```
+
+```javascript JavaScript
+const response = await fetch(
+  '{prefix}/shares/share_name/schemas/schema_name/tables/table_name/metadata',
+  {
+    method: 'GET',
+    headers: {
+      'Authorization': 'Bearer {token}'
+    }
+  }
+);
+
+const text = await response.text();
+const lines = text.trim().split('\n');
+const protocol = JSON.parse(lines[0]);
+const metadata = JSON.parse(lines[1]);
+
+const version = response.headers.get('Delta-Table-Version');
+console.log(`Table version: ${version}`);
+```
+</CodeGroup>
+
+## Example Response
+
+```
+HTTP/2 200
+content-type: application/x-ndjson; charset=utf-8
+delta-table-version: 123
+```
+
+```json
+{"protocol":{"minReaderVersion":1}}
+{"metaData":{"id":"f8d5c169-3d01-4ca3-ad9e-7dc3355aedb2","location":"s3://my-bucket/tables/customer","auxiliaryLocations":["s3://secondary-bucket/tables/customer"],"accessModes":["url","dir"],"format":{"provider":"parquet"},"schemaString":"{\"type\":\"struct\",\"fields\":[{\"name\":\"eventTime\",\"type\":\"timestamp\",\"nullable\":true,\"metadata\":{}},{\"name\":\"date\",\"type\":\"date\",\"nullable\":true,\"metadata\":{}}]}","partitionColumns":["date"]}}
+```
+
+## Formatted Example
+
+For readability, here's the same response formatted:
+
+```json
+// Line 1: Protocol
+{
+  "protocol": {
+    "minReaderVersion": 1
+  }
+}
+
+// Line 2: Metadata
+{
+  "metaData": {
+    "id": "f8d5c169-3d01-4ca3-ad9e-7dc3355aedb2",
+    "location": "s3://my-bucket/tables/customer",
+    "auxiliaryLocations": [
+      "s3://secondary-bucket/tables/customer"
+    ],
+    "accessModes": ["url", "dir"],
+    "format": {
+      "provider": "parquet"
+    },
+    "schemaString": "{\"type\":\"struct\",\"fields\":[{\"name\":\"eventTime\",\"type\":\"timestamp\",\"nullable\":true,\"metadata\":{}},{\"name\":\"date\",\"type\":\"date\",\"nullable\":true,\"metadata\":{}}]}",
+    "partitionColumns": ["date"]
+  }
+}
+```
+
+## Error Responses
+
+<Expandable title="400 - Bad Request">
+  The request is malformed.
+  
+  ```json
+  {
+    "errorCode": "string",
+    "message": "string"
+  }
+  ```
+</Expandable>
+
+<Expandable title="401 - Unauthorized">
+  The bearer token is missing or incorrect.
+  
+  ```json
+  {
+    "errorCode": "string",
+    "message": "string"
+  }
+  ```
+</Expandable>
+
+<Expandable title="403 - Forbidden">
+  The request is forbidden from being fulfilled.
+  
+  ```json
+  {
+    "errorCode": "string",
+    "message": "string"
+  }
+  ```
+</Expandable>
+
+<Expandable title="404 - Not Found">
+  The requested resource does not exist.
+  
+  ```json
+  {
+    "errorCode": "string",
+    "message": "string"
+  }
+  ```
+</Expandable>
+
+<Expandable title="500 - Internal Server Error">
+  The request is not handled correctly due to a server error.
+  
+  ```json
+  {
+    "errorCode": "string",
+    "message": "string"
+  }
+  ```
+</Expandable>
+
+<Note>
+  This API is useful for:
+  - Inspecting table schema before querying data
+  - Validating partition columns for predicate pushdown
+  - Checking table configuration (e.g., Change Data Feed enabled)
+  - Understanding access modes available for the table
+</Note>

@@ -1,0 +1,302 @@
+---
+title: 'Quick Start'
+description: 'Get started with the Apache Spark Connector in minutes'
+---
+
+## Understanding Table Paths
+
+Before accessing shared data, you need to understand how Delta Sharing table paths work.
+
+A **table path** consists of two parts joined by `#`:
+
+```
+<profile-file-path>#<share-name>.<schema-name>.<table-name>
+```
+
+<Steps>
+  <Step title="Profile file path">
+    The path to your credential file (can be local or remote):
+    - Local: `/path/to/profile.share`
+    - S3: `s3a://my-bucket/profile.share`
+    - ADLS: `abfss://container@account.dfs.core.windows.net/profile.share`
+  </Step>
+  
+  <Step title="Fully qualified table name">
+    The three-part identifier for the shared table: `<share>.<schema>.<table>`
+  </Step>
+</Steps>
+
+<Note>
+The profile file path must use Hadoop FileSystem-compatible URLs. Use `s3a://` (not `s3://`) for S3 paths.
+</Note>
+
+## Reading Shared Tables
+
+Once you have your table path, reading shared data is simple in any language.
+
+<Tabs>
+  <Tab title="Python">
+    ```python
+    # Define the table path
+    table_path = "<profile-file-path>#<share-name>.<schema-name>.<table-name>"
+    
+    # Load the shared table as a DataFrame
+    df = spark.read.format("deltaSharing").load(table_path)
+    
+    # Display the data
+    df.show()
+    
+    # Perform operations
+    df.filter(df.age > 21).select("name", "age").show()
+    ```
+
+    ### Example with Real Path
+
+    ```python
+    # Using the example Delta Sharing server
+    table_path = "/tmp/open-datasets.share#delta_sharing.default.boston-housing"
+    
+    df = spark.read.format("deltaSharing").load(table_path)
+    print(f"Rows: {df.count()}, Columns: {len(df.columns)}")
+    df.printSchema()
+    ```
+  </Tab>
+  
+  <Tab title="Scala">
+    ```scala
+    // Define the table path
+    val tablePath = "<profile-file-path>#<share-name>.<schema-name>.<table-name>"
+    
+    // Load the shared table as a DataFrame
+    val df = spark.read.format("deltaSharing").load(tablePath)
+    
+    // Display the data
+    df.show()
+    
+    // Perform operations
+    df.filter($"age" > 21).select("name", "age").show()
+    ```
+
+    ### Example with Real Path
+
+    ```scala
+    // Using the example Delta Sharing server
+    val tablePath = "/tmp/open-datasets.share#delta_sharing.default.boston-housing"
+    
+    val df = spark.read.format("deltaSharing").load(tablePath)
+    println(s"Rows: ${df.count()}, Columns: ${df.columns.length}")
+    df.printSchema()
+    ```
+  </Tab>
+  
+  <Tab title="Java">
+    ```java
+    // Define the table path
+    String tablePath = "<profile-file-path>#<share-name>.<schema-name>.<table-name>";
+    
+    // Load the shared table as a DataFrame
+    Dataset<Row> df = spark.read().format("deltaSharing").load(tablePath);
+    
+    // Display the data
+    df.show();
+    
+    // Perform operations
+    df.filter(df.col("age").gt(21))
+      .select("name", "age")
+      .show();
+    ```
+
+    ### Example with Real Path
+
+    ```java
+    // Using the example Delta Sharing server
+    String tablePath = "/tmp/open-datasets.share#delta_sharing.default.boston-housing";
+    
+    Dataset<Row> df = spark.read().format("deltaSharing").load(tablePath);
+    System.out.println("Rows: " + df.count() + ", Columns: " + df.columns().length);
+    df.printSchema();
+    ```
+  </Tab>
+  
+  <Tab title="R">
+    ```r
+    # Define the table path
+    table_path <- "<profile-file-path>#<share-name>.<schema-name>.<table-name>"
+    
+    # Load the shared table as a DataFrame
+    df <- read.df(table_path, "deltaSharing")
+    
+    # Display the data
+    showDF(df)
+    
+    # Perform operations
+    filtered_df <- filter(df, df$age > 21)
+    showDF(select(filtered_df, "name", "age"))
+    ```
+
+    ### Example with Real Path
+
+    ```r
+    # Using the example Delta Sharing server
+    table_path <- "/tmp/open-datasets.share#delta_sharing.default.boston-housing"
+    
+    df <- read.df(table_path, "deltaSharing")
+    cat("Rows:", nrow(df), "Columns:", ncol(df), "\n")
+    printSchema(df)
+    ```
+  </Tab>
+  
+  <Tab title="SQL">
+    ```sql
+    -- First, create a table reference
+    CREATE TABLE shared_table 
+    USING deltaSharing 
+    LOCATION '<profile-file-path>#<share-name>.<schema-name>.<table-name>';
+    
+    -- Now you can query it like any other table
+    SELECT * FROM shared_table;
+    
+    -- Perform operations
+    SELECT name, age 
+    FROM shared_table 
+    WHERE age > 21;
+    ```
+
+    ### Example with Real Path
+
+    ```sql
+    -- Using the example Delta Sharing server
+    CREATE TABLE boston_housing 
+    USING deltaSharing 
+    LOCATION '/tmp/open-datasets.share#delta_sharing.default.boston-housing';
+    
+    SELECT COUNT(*) as row_count FROM boston_housing;
+    DESCRIBE boston_housing;
+    ```
+  </Tab>
+</Tabs>
+
+## Working with DataFrames
+
+Once loaded, shared tables behave like regular Spark DataFrames:
+
+```python
+# Standard DataFrame operations work seamlessly
+df = spark.read.format("deltaSharing").load(table_path)
+
+# Aggregations
+df.groupBy("category").count().show()
+
+# Joins with other DataFrames
+local_df = spark.read.parquet("/path/to/local/data")
+joined = df.join(local_df, "id")
+
+# Write results to storage
+df.filter(df.status == "active").write.parquet("/output/path")
+```
+
+## Common Patterns
+
+<AccordionGroup>
+  <Accordion title="Reading specific columns">
+    ```python
+    # Select only needed columns for better performance
+    df = spark.read.format("deltaSharing").load(table_path)
+    result = df.select("id", "name", "timestamp")
+    ```
+  </Accordion>
+  
+  <Accordion title="Filtering data">
+    ```python
+    # Apply filters to reduce data transfer
+    df = spark.read.format("deltaSharing").load(table_path)
+    filtered = df.filter((df.date >= "2024-01-01") & (df.status == "active"))
+    ```
+  </Accordion>
+  
+  <Accordion title="Caching for multiple queries">
+    ```python
+    # Cache the DataFrame if you'll use it multiple times
+    df = spark.read.format("deltaSharing").load(table_path)
+    df.cache()
+    
+    # Now multiple operations won't re-fetch the data
+    df.count()
+    df.groupBy("category").count().show()
+    ```
+  </Accordion>
+  
+  <Accordion title="Creating temporary views">
+    ```python
+    # Create a temporary view for SQL access
+    df = spark.read.format("deltaSharing").load(table_path)
+    df.createOrReplaceTempView("shared_data")
+    
+    # Query with SQL
+    spark.sql("SELECT * FROM shared_data WHERE age > 21").show()
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Profile File Locations
+
+Profile files can be stored in various locations:
+
+<CodeGroup>
+```python Local File System
+table_path = "/home/user/credentials/profile.share#myshare.myschema.mytable"
+df = spark.read.format("deltaSharing").load(table_path)
+```
+
+```python Amazon S3
+table_path = "s3a://my-bucket/configs/profile.share#myshare.myschema.mytable"
+df = spark.read.format("deltaSharing").load(table_path)
+```
+
+```python Azure Data Lake Storage Gen2
+table_path = "abfss://container@account.dfs.core.windows.net/profile.share#myshare.myschema.mytable"
+df = spark.read.format("deltaSharing").load(table_path)
+```
+
+```python Google Cloud Storage
+table_path = "gs://my-bucket/configs/profile.share#myshare.myschema.mytable"
+df = spark.read.format("deltaSharing").load(table_path)
+```
+</CodeGroup>
+
+## Error Handling
+
+<Warning>
+**Common Issues:**
+
+- **Authentication errors**: Verify your profile file credentials are correct
+- **Table not found**: Check the share, schema, and table names
+- **Invalid path**: Ensure you're using `#` to separate the profile path from the table name
+- **Network issues**: Confirm connectivity to the Delta Sharing server
+</Warning>
+
+```python
+# Example error handling
+try:
+    df = spark.read.format("deltaSharing").load(table_path)
+    df.show()
+except Exception as e:
+    print(f"Error accessing shared table: {e}")
+    # Check profile file exists and is valid
+    # Verify table path format
+    # Confirm network connectivity
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="SQL Usage" icon="database" href="/spark/sql-usage">
+    Learn advanced SQL patterns for Delta Sharing
+  </Card>
+  <Card title="Streaming" icon="water" href="/spark/streaming">
+    Stream data from shared tables
+  </Card>
+  <Card title="Change Data Feed" icon="timeline" href="/spark/change-data-feed">
+    Query table changes over time
+  </Card>
+</CardGroup>

@@ -1,0 +1,295 @@
+---
+title: Community Connectors
+description: Comprehensive list of community-built Delta Sharing connectors across programming languages and platforms
+icon: puzzle-piece
+---
+
+The Delta Sharing community has built connectors for numerous programming languages, data tools, and platforms. These connectors implement the [Delta Sharing Protocol](/protocol/overview) to enable data consumption from your preferred environment.
+
+## Available Connectors
+
+The following connectors are actively maintained by the community:
+
+### Programming Languages
+
+<CardGroup cols={2}>
+  <Card title="Clojure" icon="code" href="https://github.com/amperity/delta-sharing-client-clj">
+    Full-featured Clojure client with CDF, time travel, and predicate pushdown support
+  </Card>
+  <Card title="Node.js" icon="js" href="https://github.com/goodwillpunning/nodejs-sharing-client">
+    JavaScript/TypeScript connector for Node.js applications
+  </Card>
+  <Card title="Java" icon="java" href="https://github.com/databrickslabs/delta-sharing-java-connector">
+    Pure Java implementation for JVM applications
+  </Card>
+  <Card title="Rust" icon="rust" href="https://github.com/r3stl355/delta-sharing-rust-client">
+    High-performance Rust client for systems programming
+  </Card>
+  <Card title="Go" icon="golang" href="https://github.com/magpierre/delta-sharing/tree/golangdev/golang/delta_sharing_go">
+    Go implementation for cloud-native applications
+  </Card>
+  <Card title="C++" icon="c" href="https://github.com/magpierre/delta-sharing/tree/cppdev/cpp/DeltaSharingClient">
+    Native C++ client for performance-critical applications
+  </Card>
+  <Card title="R" icon="r-project" href="https://github.com/zacdav-db/delta-sharing-r">
+    R package for statistical computing and data science
+  </Card>
+</CardGroup>
+
+### Data Tools & Platforms
+
+<CardGroup cols={2}>
+  <Card title="Power BI" icon="chart-line">
+    Official Databricks-owned connector for Microsoft Power BI
+  </Card>
+  <Card title="Arcuate" icon="database" href="https://github.com/databrickslabs/arcuate">
+    Data integration framework with Delta Sharing support
+  </Card>
+  <Card title="Google Sheets" icon="table" href="https://github.com/delta-incubator/delta-sharing-connectors/tree/main/google_workspace_add_on">
+    Add-on for importing shared data into Google Spreadsheets (Beta)
+  </Card>
+  <Card title="Excel Connector" icon="file-excel" href="https://www.exponam.com/solutions/">
+    Commercial Excel integration (limited release)
+  </Card>
+</CardGroup>
+
+### Specialized Connectors
+
+<Card title="Lakehouse Sharing" icon="warehouse" href="https://github.com/rajagurunath/lakehouse-sharing">
+  Experimental table-format agnostic sharing server supporting both Delta Lake and Apache Iceberg formats using the Delta Sharing Protocol. [Read the detailed explanation](https://guruengineering.substack.com/p/lakehouse-sharing).
+</Card>
+
+## Detailed Connector Information
+
+### Clojure Client
+
+<Card icon="code" title="amperity/delta-sharing-client-clj" href="https://github.com/amperity/delta-sharing-client-clj">
+  **Status**: Released  
+  **Maintainer**: Amperity
+  
+  **Features**:
+  - Query table version and metadata
+  - Query latest table snapshots
+  - Change Data Feed (CDF) queries
+  - Time travel queries
+  - Query changes between versions
+  - Delta format queries
+  - Limit and predicate pushdown
+  
+  This is the most feature-complete community connector, implementing nearly all advanced Delta Sharing capabilities.
+</Card>
+
+### Node.js Client
+
+<Card icon="js" title="nodejs-sharing-client" href="https://github.com/goodwillpunning/nodejs-sharing-client">
+  **Status**: Released
+  
+  **Features**:
+  - Query table version and metadata
+  - Query latest table snapshots
+  - Query table metadata
+  
+  Ideal for JavaScript and TypeScript applications, including serverless functions and Node.js backends.
+</Card>
+
+### Java Connector
+
+<Card icon="java" title="databrickslabs/delta-sharing-java-connector" href="https://github.com/databrickslabs/delta-sharing-java-connector">
+  **Status**: Released  
+  **Maintainer**: Databricks Labs
+  
+  **Features**:
+  - Query table version and metadata
+  - Query latest table snapshots
+  - Query table metadata
+  
+  Pure Java implementation suitable for enterprise Java applications and frameworks.
+</Card>
+
+### Rust Client
+
+<Card icon="rust" title="delta-sharing-rust-client" href="https://github.com/r3stl355/delta-sharing-rust-client">
+  **Status**: Released
+  
+  **Features**:
+  - Query table version and metadata
+  - Query latest table snapshots
+  - Query table metadata
+  
+  High-performance implementation for systems programming and embedded use cases.
+</Card>
+
+### Go Client
+
+<Card icon="golang" title="delta-sharing Go implementation" href="https://github.com/magpierre/delta-sharing/tree/golangdev/golang/delta_sharing_go">
+  **Status**: Released
+  
+  **Features**:
+  - Query table version and metadata
+  - Query latest table snapshots
+  - Query table metadata
+  
+  Native Go implementation perfect for microservices and cloud-native applications.
+</Card>
+
+### C++ Client
+
+<Card icon="c" title="DeltaSharingClient (C++)" href="https://github.com/magpierre/delta-sharing/tree/cppdev/cpp/DeltaSharingClient">
+  **Status**: Released
+  
+  **Features**:
+  - Query table metadata
+  - Query latest table snapshots
+  
+  Native C++ client for high-performance and embedded applications.
+</Card>
+
+### R Package
+
+<Card icon="r-project" title="delta-sharing-r" href="https://github.com/zacdav-db/delta-sharing-r">
+  **Status**: Released
+  
+  **Features**:
+  - Query table version and metadata
+  - Query latest table snapshots
+  - Query table metadata
+  
+  Enables R users to access shared Delta tables for statistical analysis and data science workflows.
+</Card>
+
+### Power BI Connector
+
+<Card icon="chart-line" title="Power BI Connector">
+  **Status**: Released  
+  **Maintainer**: Databricks (Official)
+  
+  **Features**:
+  - Query table version and metadata
+  - Query latest table snapshots
+  - Query table metadata
+  
+  Official connector for Microsoft Power BI, enabling business intelligence and reporting on shared Delta tables.
+</Card>
+
+### Arcuate
+
+<Card icon="database" title="databrickslabs/arcuate" href="https://github.com/databrickslabs/arcuate">
+  **Status**: Released  
+  **Maintainer**: Databricks Labs
+  
+  **Features**:
+  - Query table version and metadata
+  - Query latest table snapshots
+  - Query table metadata
+  
+  Data integration framework with built-in Delta Sharing support.
+</Card>
+
+### Google Sheets Add-on
+
+<Card icon="table" title="Google Workspace Add-on" href="https://github.com/delta-incubator/delta-sharing-connectors/tree/main/google_workspace_add_on">
+  **Status**: Beta
+  
+  **Features**:
+  - Query table version and metadata
+  - Query latest table snapshots
+  - Query table metadata
+  
+  Import shared Delta tables directly into Google Spreadsheets for collaborative analysis.
+</Card>
+
+## In Development
+
+### Airflow Integration
+
+<Card icon="wind" title="Apache Airflow" href="https://github.com/apache/airflow/pull/22692">
+  **Status**: Un-released (PR pending)
+  
+  Integration with Apache Airflow for orchestrating data pipelines with Delta Sharing tables.
+</Card>
+
+## Feature Matrix
+
+<Note>
+The following table summarizes the features supported by each connector:
+</Note>
+
+| Connector | Version Query | Metadata | Snapshot | CDF | Time Travel | Predicate Pushdown | Delta Format |
+|-----------|---------------|----------|----------|-----|-------------|--------------------|-------------|
+| **Clojure** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Node.js** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Java** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Rust** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Go** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **C++** | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **R** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Power BI** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Arcuate** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Google Sheets** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+
+### Feature Definitions
+
+<Accordion title="QueryTableVersion">
+Ability to retrieve the current version number of a shared table. This is essential for tracking table changes and implementing time travel queries.
+</Accordion>
+
+<Accordion title="QueryTableMetadata">
+Retrieve table schema information including column names, data types, and partitioning details. Required for all connectors.
+</Accordion>
+
+<Accordion title="QueryTableLatestSnapshot">
+Fetch the latest data snapshot from a shared table. This is the core functionality that all connectors must implement.
+</Accordion>
+
+<Accordion title="QueryTableChanges (CDF)">
+Support for Change Data Feed queries, allowing incremental processing by retrieving only the changes between table versions.
+</Accordion>
+
+<Accordion title="Time Travel Queries">
+Query historical versions of tables by specifying a version number or timestamp.
+</Accordion>
+
+<Accordion title="Limit and Predicate Pushdown">
+Send filter predicates and row limits to the server to reduce data transfer and improve query performance.
+</Accordion>
+
+<Accordion title="Delta Format Queries">
+Request data in native Delta format instead of Parquet for optimized performance with Delta-aware engines.
+</Accordion>
+
+## Choosing a Connector
+
+When selecting a connector for your use case, consider:
+
+1. **Language/Platform Compatibility**: Choose a connector in your preferred programming language or data tool
+2. **Feature Requirements**: If you need advanced features like CDF or time travel, the Clojure client currently offers the most complete implementation
+3. **Maintenance Status**: Released connectors are production-ready, while Beta/Preview connectors may have limitations
+4. **Performance Needs**: Rust and C++ clients offer the best performance for high-throughput scenarios
+5. **Community Support**: Check the GitHub repository for recent activity and issue response times
+
+## Contributing a Connector
+
+Interested in building a connector for a new language or platform? See our [Community Ecosystem Guide](/community/overview) for implementation guidelines.
+
+To add your connector to this list:
+
+1. Implement the [Delta Sharing Protocol](/protocol/overview)
+2. Open source your code with clear documentation
+3. Submit a pull request to the [Delta Sharing repository](https://github.com/delta-io/delta-sharing) updating the README
+
+## Support & Resources
+
+<CardGroup cols={2}>
+  <Card title="Protocol Docs" icon="book" href="/protocol/overview">
+    Learn the Delta Sharing Protocol specification
+  </Card>
+  <Card title="Build Your Own" icon="hammer" href="/community/overview">
+    Guidelines for creating a new connector
+  </Card>
+  <Card title="Join Slack" icon="slack" href="https://go.delta.io/slack">
+    Connect with the community on Slack
+  </Card>
+  <Card title="GitHub Issues" icon="github" href="https://github.com/delta-io/delta-sharing/issues">
+    Report issues or request features
+  </Card>
+</CardGroup>

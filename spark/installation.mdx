@@ -1,0 +1,139 @@
+---
+title: 'Installation'
+description: 'Set up the Apache Spark Connector for Delta Sharing'
+---
+
+## System Requirements
+
+Before installing the Apache Spark Connector, ensure your environment meets these requirements:
+
+- **Java**: 8 or higher
+- **Scala**: 2.12.x
+- **Apache Spark**: 3.0 or higher, or Databricks Runtime 9+
+
+<Note>
+If you're using Databricks Runtime, you can install the connector through the [Databricks Libraries](https://docs.databricks.com/libraries/index.html) interface instead of following the manual installation steps below.
+</Note>
+
+## Installation Methods
+
+You can install the Delta Sharing Spark connector in two ways:
+
+1. **Interactive Shell**: Launch Spark shells with the connector for interactive use
+2. **Standalone Project**: Add the connector as a dependency in your Maven or SBT project
+
+### Interactive Shell Setup
+
+The easiest way to get started is to launch Spark with the Delta Sharing connector package.
+
+<Tabs>
+  <Tab title="PySpark">
+    Launch the PySpark shell with the connector:
+
+    ```bash
+    pyspark --packages io.delta:delta-sharing-spark_2.12:3.1.0
+    ```
+
+    This automatically downloads and configures the connector for your session.
+  </Tab>
+  
+  <Tab title="Scala">
+    Launch the Spark Scala shell with the connector:
+
+    ```bash
+    bin/spark-shell --packages io.delta:delta-sharing-spark_2.12:3.1.0
+    ```
+
+    The connector will be available immediately in your Scala shell.
+  </Tab>
+</Tabs>
+
+### Standalone Project Setup
+
+For production applications, add the Delta Sharing connector as a dependency to your project.
+
+<Tabs>
+  <Tab title="Maven">
+    Add this dependency to your `pom.xml` file:
+
+    ```xml
+    <dependency>
+      <groupId>io.delta</groupId>
+      <artifactId>delta-sharing-spark_2.12</artifactId>
+      <version>3.1.0</version>
+    </dependency>
+    ```
+
+    <Note>
+    The Delta Sharing Spark connector is compiled with Scala 2.12. Make sure your project uses a compatible Scala version.
+    </Note>
+  </Tab>
+  
+  <Tab title="SBT">
+    Add this line to your `build.sbt` file:
+
+    ```scala
+    libraryDependencies += "io.delta" %% "delta-sharing-spark" % "3.1.0"
+    ```
+
+    The `%%` operator automatically appends the Scala version to the artifact ID.
+  </Tab>
+</Tabs>
+
+## Version Compatibility
+
+The Delta Sharing Spark connector version 3.1.0 is compatible with:
+
+- Apache Spark 3.x
+- Databricks Runtime 9.0 and above
+- Scala 2.12.x
+
+<Warning>
+Make sure to use the correct Scala version (2.12) when specifying the artifact. Using an incompatible Scala version will cause runtime errors.
+</Warning>
+
+## Profile File Setup
+
+After installation, you'll need a profile file to connect to a Delta Sharing server. A profile file is a JSON file containing credentials to access shared data.
+
+You can obtain a profile file by:
+
+<Steps>
+  <Step title="Download from data provider">
+    Request a profile file from your data provider. They will provide a `.share` file containing connection credentials.
+  </Step>
+  
+  <Step title="Try the example server">
+    Download a sample profile file to test with the public Delta Sharing example server:
+    
+    [Download open-datasets.share](https://databricks-datasets-oregon.s3-us-west-2.amazonaws.com/delta-sharing/share/open-datasets.share)
+  </Step>
+  
+  <Step title="Set up your own server">
+    If running your own Delta Sharing server, create a profile file following the [profile file format](https://github.com/delta-io/delta-sharing/blob/main/PROTOCOL.md#profile-file-format) specification.
+  </Step>
+</Steps>
+
+## Verifying Installation
+
+To verify the connector is installed correctly, try loading a shared table:
+
+```python
+# In PySpark shell
+table_path = "<profile-file-path>#<share>.<schema>.<table>"
+df = spark.read.format("deltaSharing").load(table_path)
+df.show()
+```
+
+If you see data output, the installation was successful!
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/spark/quickstart">
+    Learn the basics of reading shared tables
+  </Card>
+  <Card title="SQL Usage" icon="database" href="/spark/sql-usage">
+    Query shared tables using SQL syntax
+  </Card>
+</CardGroup>

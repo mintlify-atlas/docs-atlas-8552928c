@@ -1,0 +1,558 @@
+---
+title: REST APIs
+description: Complete reference for Delta Sharing REST API endpoints
+---
+
+Delta Sharing uses REST APIs for all client-server communication. All APIs use [bearer token authentication](https://tools.ietf.org/html/rfc6750) and follow a consistent URL pattern with configurable prefixes.
+
+## Common Elements
+
+### Authentication
+
+All API requests require a bearer token in the Authorization header:
+
+```http
+Authorization: Bearer {token}
+```
+
+### Response Headers
+
+Many APIs return these common headers:
+
+- **`Content-Type`**: Typically `application/json; charset=utf-8` or `application/x-ndjson; charset=utf-8`
+- **`Delta-Table-Version`**: Table version number (for table-related APIs)
+
+### Pagination
+
+List APIs support pagination with two query parameters:
+
+<ParamField query="maxResults" type="integer" optional>
+  Maximum number of results per page. Must be non-negative. Zero returns no results but may populate `nextPageToken`.
+</ParamField>
+
+<ParamField query="pageToken" type="string" optional>
+  Token from previous response's `nextPageToken` to fetch the next page.
+</ParamField>
+
+<Note>
+Servers may return fewer items than `maxResults` even if more are available. Always check for `nextPageToken` in the response.
+</Note>
+
+### Error Responses
+
+All APIs use consistent error responses:
+
+<CodeGroup>
+```json Error Response
+{
+  "errorCode": "string",
+  "message": "string"
+}
+```
+</CodeGroup>
+
+**Common Status Codes:**
+- `400`: Malformed request
+- `401`: Unauthenticated (missing/incorrect token)
+- `403`: Forbidden
+- `404`: Resource not found
+- `500`: Server error
+
+---
+
+## List Shares
+
+List all shares accessible to a recipient.
+
+<CodeGroup>
+```bash Request
+GET {prefix}/shares?maxResults=10&pageToken=...
+Authorization: Bearer {token}
+```
+
+```json Response (200)
+{
+  "items": [
+    {
+      "name": "vaccine_share",
+      "id": "edacc4a7-6600-4fbb-85f3-a62a5ce6761f",
+      "displayName": "Vaccine Share",
+      "comment": "A sample share containing vaccine-related datasets",
+      "properties": {
+        "owner": "vaccine-team",
+        "region": "us-west-2"
+      }
+    }
+  ],
+  "nextPageToken": "..."
+}
+```
+</CodeGroup>
+
+**Response Fields:**
+
+<ResponseField name="items" type="array">
+  Array of share objects (may be empty or missing when no results found)
+  
+  <Expandable title="Share Object">
+    <ResponseField name="name" type="string" required>
+      Share name (max 255 characters, case-insensitive)
+    </ResponseField>
+    
+    <ResponseField name="id" type="string" optional>
+      Unique UUID for the share (immutable)
+    </ResponseField>
+    
+    <ResponseField name="displayName" type="string" optional>
+      Display name for UI (max 255 characters)
+    </ResponseField>
+    
+    <ResponseField name="comment" type="string" optional>
+      Description (max 65536 characters)
+    </ResponseField>
+    
+    <ResponseField name="properties" type="object" optional>
+      Key-value pairs (max 50 pairs, keys ≤255 chars, values ≤1000 chars)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="nextPageToken" type="string" optional>
+  Token for fetching next page (empty or missing if no more results)
+</ResponseField>
+
+---
+
+## Get Share
+
+Retrieve metadata for a specific share.
+
+<CodeGroup>
+```bash Request
+GET {prefix}/shares/{share}
+Authorization: Bearer {token}
+```
+
+```json Response (200)
+{
+  "share": {
+    "name": "vaccine_share",
+    "id": "edacc4a7-6600-4fbb-85f3-a62a5ce6761f",
+    "displayName": "Vaccine Share",
+    "comment": "A sample share containing vaccine-related datasets",
+    "properties": {
+      "owner": "vaccine-team"
+    }
+  }
+}
+```
+</CodeGroup>
+
+**URL Parameters:**
+
+<ParamField path="share" type="string" required>
+  Share name (case-insensitive)
+</ParamField>
+
+---
+
+## List Schemas in a Share
+
+List all schemas within a share.
+
+<CodeGroup>
+```bash Request
+GET {prefix}/shares/{share}/schemas?maxResults=10
+Authorization: Bearer {token}
+```
+
+```json Response (200)
+{
+  "items": [
+    {
+      "name": "acme_vaccine_data",
+      "share": "vaccine_share"
+    }
+  ],
+  "nextPageToken": "..."
+}
+```
+</CodeGroup>
+
+**URL Parameters:**
+
+<ParamField path="share" type="string" required>
+  Share name (case-insensitive)
+</ParamField>
+
+---
+
+## List Tables in a Schema
+
+List all tables within a specific schema.
+
+<CodeGroup>
+```bash Request
+GET {prefix}/shares/{share}/schemas/{schema}/tables?maxResults=10
+Authorization: Bearer {token}
+```
+
+```json Response (200)
+{
+  "items": [
+    {
+      "share": "vaccine_share",
+      "schema": "acme_vaccine_data",
+      "name": "vaccine_ingredients",
+      "shareId": "edacc4a7-6600-4fbb-85f3-a62a5ce6761f",
+      "id": "dcb1e680-7da4-4041-9be8-88aff508d001",
+      "location": "s3://bucket/table",
+      "accessModes": ["url", "dir"]
+    }
+  ],
+  "nextPageToken": "..."
+}
+```
+</CodeGroup>
+
+**URL Parameters:**
+
+<ParamField path="share" type="string" required>
+  Share name (case-insensitive)
+</ParamField>
+
+<ParamField path="schema" type="string" required>
+  Schema name (case-insensitive)
+</ParamField>
+
+**Response Fields:**
+
+<ResponseField name="items[].location" type="string" optional>
+  Root directory where delta log exists (required if server supports `dir` access)
+</ResponseField>
+
+<ResponseField name="items[].auxiliaryLocations" type="array" optional>
+  Additional storage locations for table files
+</ResponseField>
+
+<ResponseField name="items[].accessModes" type="array" optional>
+  Supported access modes: `["url"]`, `["dir"]`, or `["url", "dir"]`
+</ResponseField>
+
+---
+
+## List All Tables in a Share
+
+List all tables across all schemas in a share.
+
+<CodeGroup>
+```bash Request
+GET {prefix}/shares/{share}/all-tables?maxResults=10
+Authorization: Bearer {token}
+```
+
+```json Response (200)
+{
+  "items": [
+    {
+      "share": "vaccine_share",
+      "schema": "acme_vaccine_ingredient_data",
+      "name": "vaccine_ingredients",
+      "shareId": "edacc4a7-6600-4fbb-85f3-a62a5ce6761f",
+      "id": "2f9729e9-6fcf-4d34-96df-bf72b26dfbe9",
+      "location": "s3://deltasharing/vaccine_share/acme_vaccine_ingredient_data/vaccine_ingredients",
+      "accessModes": ["url", "dir"]
+    }
+  ],
+  "nextPageToken": "..."
+}
+```
+</CodeGroup>
+
+---
+
+## Query Table Version
+
+Get table version without additional metadata (lightweight operation for cache validation).
+
+<CodeGroup>
+```bash Request (New API)
+GET {prefix}/shares/{share}/schemas/{schema}/tables/{table}/version
+Authorization: Bearer {token}
+```
+
+```bash Request (Deprecated)
+HEAD {prefix}/shares/{share}/schemas/{schema}/tables/{table}
+Authorization: Bearer {token}
+```
+
+```http Response (200)
+HTTP/2 200
+delta-table-version: 123
+```
+</CodeGroup>
+
+**Query Parameters:**
+
+<ParamField query="startingTimestamp" type="string" optional>
+  Timestamp in ISO 8601 format (e.g., `2022-01-01T00:00:00Z`). Returns earliest table version at or after this timestamp.
+</ParamField>
+
+<Warning>
+The HEAD method is deprecated. Use `GET .../version` instead. The HEAD API will be deprecated by July 1, 2023.
+</Warning>
+
+---
+
+## Query Table Metadata
+
+Retrieve table schema and metadata.
+
+<CodeGroup>
+```bash Request
+GET {prefix}/shares/{share}/schemas/{schema}/tables/{table}/metadata
+Authorization: Bearer {token}
+delta-sharing-capabilities: responseformat=delta;readerfeatures=deletionvectors
+```
+
+```http Response (200)
+HTTP/2 200
+content-type: application/x-ndjson; charset=utf-8
+delta-table-version: 123
+```
+
+```json Response Body (NDJSON)
+{"protocol":{"minReaderVersion":1}}
+{"metaData":{"id":"f8d5c169-3d01-4ca3-ad9e-7dc3355aedb2","format":{"provider":"parquet"},"schemaString":"{\"type\":\"struct\",\"fields\":[{\"name\":\"eventTime\",\"type\":\"timestamp\"}]}","partitionColumns":["date"]}}
+```
+</CodeGroup>
+
+**Headers:**
+
+<ParamField header="delta-sharing-capabilities" type="string" optional>
+  Capabilities header (e.g., `responseformat=delta;readerfeatures=deletionvectors`)
+</ParamField>
+
+**Response:**
+- Line 1: Protocol wrapper object
+- Line 2: Metadata wrapper object
+
+See [Response Format](/protocol/response-format) for detailed object structures.
+
+---
+
+## Read Data from a Table
+
+Query table data with optional filtering and time travel.
+
+<CodeGroup>
+```bash Request
+POST {prefix}/shares/{share}/schemas/{schema}/tables/{table}/query
+Authorization: Bearer {token}
+Content-Type: application/json; charset=utf-8
+delta-sharing-capabilities: responseformat=delta
+```
+
+```json Request Body
+{
+  "predicateHints": [
+    "date >= '2021-01-01'",
+    "date <= '2021-01-31'"
+  ],
+  "limitHint": 1000,
+  "version": 123,
+  "jsonPredicateHints": "{\"op\":\"equal\",\"children\":[{\"op\":\"column\",\"name\":\"date\",\"valueType\":\"date\"},{\"op\":\"literal\",\"value\":\"2021-01-01\",\"valueType\":\"date\"}]}"
+}
+```
+
+```http Response (200)
+HTTP/2 200
+content-type: application/x-ndjson; charset=utf-8
+delta-table-version: 123
+```
+</CodeGroup>
+
+**Request Body Fields:**
+
+<ParamField body="predicateHints" type="array[string]" optional>
+  SQL boolean expressions for filtering (best effort). See [SQL Expressions](/protocol/filtering#sql-expressions).
+</ParamField>
+
+<ParamField body="jsonPredicateHints" type="string" optional>
+  JSON-formatted predicates (preferred over predicateHints). See [JSON Predicates](/protocol/filtering#json-predicates).
+</ParamField>
+
+<ParamField body="limitHint" type="integer" optional>
+  Hint for row limit (best effort)
+</ParamField>
+
+<ParamField body="version" type="long" optional>
+  Table version for time travel (requires history sharing)
+</ParamField>
+
+<ParamField body="timestamp" type="string" optional>
+  Timestamp for time travel in ISO 8601 format (requires history sharing)
+</ParamField>
+
+<ParamField body="startingVersion" type="long" optional>
+  Return data change files since this version (inclusive)
+</ParamField>
+
+<ParamField body="endingVersion" type="long" optional>
+  Hint to avoid returning files after this version (used with startingVersion)
+</ParamField>
+
+<Warning>
+**Best Effort Filtering**: Servers apply hints on a best-effort basis. Clients must always apply predicates and limits to returned data.
+</Warning>
+
+**Response:**
+- Line 1: Protocol wrapper
+- Line 2: Metadata wrapper
+- Lines 3+: File wrapper objects
+
+---
+
+## Read Change Data Feed
+
+Query change data feed (CDF) for a table.
+
+<CodeGroup>
+```bash Request
+GET {prefix}/shares/{share}/schemas/{schema}/tables/{table}/changes?startingVersion=0&endingVersion=2
+Authorization: Bearer {token}
+```
+
+```http Response (200)
+HTTP/2 200
+content-type: application/x-ndjson; charset=utf-8
+delta-table-version: 0
+```
+</CodeGroup>
+
+**Query Parameters:**
+
+<ParamField query="startingVersion" type="long" optional>
+  Starting version (inclusive)
+</ParamField>
+
+<ParamField query="startingTimestamp" type="string" optional>
+  Starting timestamp in ISO 8601 format
+</ParamField>
+
+<ParamField query="endingVersion" type="long" optional>
+  Ending version (inclusive)
+</ParamField>
+
+<ParamField query="endingTimestamp" type="string" optional>
+  Ending timestamp in ISO 8601 format
+</ParamField>
+
+<ParamField query="includeHistoricalMetadata" type="boolean" optional>
+  Return historical metadata for schema compatibility checks
+</ParamField>
+
+<Info>
+CDF responses include metadata columns: `_change_type` (insert, update_preimage, update_postimage, delete), `_commit_version`, and `_commit_timestamp`.
+</Info>
+
+---
+
+## Generate Temporary Table Credential
+
+Get temporary cloud credentials for directory-based access.
+
+<CodeGroup>
+```bash Request
+POST {prefix}/shares/{share}/schemas/{schema}/tables/{table}/temporary-table-credentials
+Authorization: Bearer {token}
+Content-Type: application/json; charset=utf-8
+```
+
+```json Request Body
+{
+  "location": "s3://some/path/to/table"
+}
+```
+
+```json Response (200)
+{
+  "credentials": {
+    "location": "s3://some/path/to/table",
+    "awsTempCredentials": {
+      "accessKeyId": "REDACTED",
+      "secretAccessKey": "REDACTED",
+      "sessionToken": "REDACTED"
+    },
+    "expirationTime": 1718298900000
+  }
+}
+```
+</CodeGroup>
+
+**Request Body:**
+
+<ParamField body="location" type="string" optional>
+  Storage location to generate credentials for. If omitted, returns credentials for table's main location. Must be called for root location and all auxiliary locations.
+</ParamField>
+
+**Response Fields:**
+
+<ResponseField name="credentials.location" type="string" required>
+  Directory the credentials grant read access to
+</ResponseField>
+
+<ResponseField name="credentials.expirationTime" type="long" required>
+  Expiration timestamp in epoch milliseconds
+</ResponseField>
+
+<ResponseField name="credentials.awsTempCredentials" type="object" optional>
+  AWS temporary credentials (STS)
+  
+  <Expandable title="AWS Credentials">
+    <ResponseField name="accessKeyId" type="string" required />
+    <ResponseField name="secretAccessKey" type="string" required />
+    <ResponseField name="sessionToken" type="string" required />
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="credentials.azureUserDelegationSas" type="object" optional>
+  Azure SAS token
+  
+  <Expandable title="Azure Credentials">
+    <ResponseField name="sasToken" type="string" required />
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="credentials.gcpOauthToken" type="object" optional>
+  GCP OAuth token
+  
+  <Expandable title="GCP Credentials">
+    <ResponseField name="oauthToken" type="string" required />
+  </Expandable>
+</ResponseField>
+
+<Note>
+Only one of `awsTempCredentials`, `azureUserDelegationSas`, or `gcpOauthToken` will be present.
+</Note>
+
+---
+
+## Timestamp Format
+
+All timestamp parameters must use ISO 8601 format in UTC timezone:
+
+```
+2022-01-01T00:00:00Z
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Response Format" icon="file-code" href="/protocol/response-format">
+    Understand API response structures
+  </Card>
+  <Card title="Filtering" icon="filter" href="/protocol/filtering">
+    Learn about data filtering
+  </Card>
+</CardGroup>

@@ -1,0 +1,408 @@
+---
+title: 'Server Configuration'
+description: 'Configure shares, schemas, tables, and server settings'
+---
+
+## Configuration File Overview
+
+The Delta Sharing Reference Server uses a YAML configuration file to define:
+
+- **Shares, schemas, and tables** to expose to recipients
+- **Server settings** like host, port, and endpoints
+- **Performance tuning** parameters
+- **Security settings** for authentication
+
+## Creating Your Configuration File
+
+<Steps>
+  <Step title="Copy the Template">
+    Navigate to your server installation directory and copy the template:
+    
+    ```bash
+    cd /opt/delta-sharing-server
+    cp conf/delta-sharing-server.yaml.template conf/delta-sharing-server.yaml
+    ```
+  </Step>
+  
+  <Step title="Edit the Configuration">
+    Open the file in your preferred text editor:
+    
+    ```bash
+    nano conf/delta-sharing-server.yaml
+    ```
+    
+    Or use `vim`, `emacs`, or any editor of your choice.
+  </Step>
+  
+  <Step title="Customize Settings">
+    Modify the configuration according to your requirements (see sections below)
+  </Step>
+</Steps>
+
+## Configuration File Structure
+
+The YAML configuration file follows this structure:
+
+```yaml
+# Config version
+version: 1
+
+# Define shares, schemas, and tables
+shares:
+  - name: "share_name"
+    schemas:
+      - name: "schema_name"
+        tables:
+          - name: "table_name"
+            location: "storage_location"
+            id: "unique_table_id"
+
+# Server settings
+host: "localhost"
+port: 8080
+endpoint: "/delta-sharing"
+
+# Optional: Authorization
+authorization:
+  bearerToken: "your_secret_token"
+```
+
+## Defining Shares, Schemas, and Tables
+
+Delta Sharing uses a three-level hierarchy: **Share > Schema > Table**
+
+<Accordion title="Understanding the Hierarchy">
+  - **Share**: A top-level container representing a collection of data you're sharing with a recipient or group
+  - **Schema**: A logical grouping of related tables within a share (similar to a database schema)
+  - **Table**: An individual Delta Lake or Parquet table
+</Accordion>
+
+### Basic Example
+
+Here's a simple configuration with one share containing one table:
+
+```yaml
+version: 1
+
+shares:
+  - name: "sales_data"
+    schemas:
+      - name: "production"
+        tables:
+          - name: "orders"
+            location: "s3a://my-bucket/delta-tables/orders"
+            id: "ed5fa005-12ab-4c3f-92e0-c51f4c930c04"
+```
+
+### Complete Example with Multiple Shares
+
+```yaml
+version: 1
+
+shares:
+  # Share 1: Sales data for external partners
+  - name: "partner_sales"
+    schemas:
+      - name: "transactions"
+        tables:
+          - name: "orders"
+            location: "s3a://company-data/sales/orders"
+            id: "00000000-0000-0000-0000-000000000001"
+          - name: "line_items"
+            location: "s3a://company-data/sales/line_items"
+            id: "00000000-0000-0000-0000-000000000002"
+      - name: "customers"
+        tables:
+          - name: "accounts"
+            location: "s3a://company-data/crm/accounts"
+            id: "00000000-0000-0000-0000-000000000003"
+  
+  # Share 2: Analytics data for data science team
+  - name: "analytics"
+    schemas:
+      - name: "metrics"
+        tables:
+          - name: "daily_summary"
+            location: "s3a://analytics-bucket/summaries/daily"
+            historyShared: true
+            id: "00000000-0000-0000-0000-000000000004"
+```
+
+## Table Configuration Options
+
+Each table in your configuration supports these properties:
+
+<ParamField path="name" type="string" required>
+  The name of the table as it will appear to recipients
+</ParamField>
+
+<ParamField path="location" type="string" required>
+  The cloud storage path to the Delta Lake or Parquet table. Must use the appropriate URI scheme:
+  - S3: `s3a://bucket-name/path/to/table`
+  - Azure Blob: `wasbs://container@account.blob.core.windows.net/path`
+  - ADLS Gen2: `abfss://container@account.dfs.core.windows.net/path`
+  - GCS: `gs://bucket-name/path/to/table`
+  - Cloudflare R2: `s3a://bucket-name/path/to/table`
+</ParamField>
+
+<ParamField path="id" type="string" required>
+  A unique identifier (UUID) for the table. Generate one using:
+  ```bash
+  uuidgen  # Linux/macOS
+  # or
+  python3 -c "import uuid; print(uuid.uuid4())"
+  ```
+</ParamField>
+
+<ParamField path="historyShared" type="boolean" default="false">
+  Enable sharing of table history and Change Data Feed (CDF). When `true`, recipients can query incremental changes to the table.
+  
+  <Note>
+    The underlying Delta Lake table must have Change Data Feed enabled (`delta.enableChangeDataFeed=true`)
+  </Note>
+</ParamField>
+
+### Example with History Sharing
+
+```yaml
+tables:
+  - name: "events_with_history"
+    location: "s3a://data-lake/events"
+    historyShared: true
+    id: "12345678-1234-1234-1234-123456789abc"
+```
+
+## Server Settings
+
+Configure how the server listens and responds to requests:
+
+```yaml
+# Server binding
+host: "0.0.0.0"  # Listen on all interfaces
+port: 8080        # Port to listen on
+
+# API endpoint prefix
+endpoint: "/delta-sharing"
+
+# Pre-signed URL timeout (in seconds)
+preSignedUrlTimeoutSeconds: 3600  # 1 hour
+
+# Table metadata cache size
+deltaTableCacheSize: 10
+
+# Allow stale table versions (useful for static tables)
+stalenessAcceptable: false
+
+# Query pagination settings
+queryTablePageSizeLimit: 10000
+queryTablePageTokenTtlMs: 259200000  # 3 days
+refreshTokenTtlMs: 3600000           # 1 hour
+```
+
+<ParamField path="host" type="string" default="localhost">
+  The hostname or IP address the server binds to:
+  - `localhost`: Only accessible from the same machine
+  - `0.0.0.0`: Accessible from any network interface
+  - Specific IP: Bind to a specific network interface
+</ParamField>
+
+<ParamField path="port" type="integer" default="8080">
+  The TCP port the server listens on. Ports below 1024 may require root/administrator privileges.
+</ParamField>
+
+<ParamField path="endpoint" type="string" default="/delta-sharing">
+  URL path prefix for all Delta Sharing API endpoints. The full API URL will be `http://host:port/endpoint/`
+</ParamField>
+
+<ParamField path="preSignedUrlTimeoutSeconds" type="integer" default="3600">
+  How long (in seconds) pre-signed URLs remain valid. Clients must download data files within this time window.
+  
+  <Warning>
+    Longer timeouts increase security risk. Shorter timeouts may cause issues for large file downloads.
+  </Warning>
+</ParamField>
+
+<ParamField path="deltaTableCacheSize" type="integer" default="10">
+  Number of Delta Lake table metadata objects to cache in memory for performance.
+</ParamField>
+
+<ParamField path="stalenessAcceptable" type="boolean" default="false">
+  When `true`, the server can work with potentially stale table versions. Useful for static tables that never change.
+</ParamField>
+
+## Predicate Pushdown Configuration
+
+Enable filtering to reduce data transfer:
+
+```yaml
+# Enable predicate hints evaluation
+evaluatePredicateHints: false
+
+# Enable JSON predicate hints (recommended)
+evaluateJsonPredicateHints: true
+
+# Enable V2 JSON predicate hints
+evaluateJsonPredicateHintsV2: true
+```
+
+<Info>
+  JSON predicate hints allow clients to push down filters (WHERE clauses) to the server, which can significantly reduce the amount of data transferred.
+</Info>
+
+## Pagination Settings
+
+```yaml
+# Maximum number of rows per page
+queryTablePageSizeLimit: 10000
+
+# Page token time-to-live (milliseconds)
+queryTablePageTokenTtlMs: 259200000  # 3 days
+
+# Refresh token time-to-live (milliseconds)
+refreshTokenTtlMs: 3600000  # 1 hour
+```
+
+<ParamField path="queryTablePageSizeLimit" type="integer" default="10000">
+  Maximum number of rows returned in a single page when querying tables.
+</ParamField>
+
+<ParamField path="queryTablePageTokenTtlMs" type="integer" default="259200000">
+  How long page tokens remain valid (in milliseconds). Default is 3 days.
+</ParamField>
+
+<ParamField path="refreshTokenTtlMs" type="integer" default="3600000">
+  How long refresh tokens remain valid (in milliseconds). Default is 1 hour.
+</ParamField>
+
+## Complete Configuration Example
+
+Here's a production-ready configuration example:
+
+```yaml
+version: 1
+
+# Define shares and tables
+shares:
+  - name: "customer_analytics"
+    schemas:
+      - name: "user_events"
+        tables:
+          - name: "clickstream"
+            location: "s3a://data-lake/events/clickstream"
+            historyShared: true
+            id: "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
+          - name: "conversions"
+            location: "s3a://data-lake/events/conversions"
+            id: "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e"
+      - name: "user_profiles"
+        tables:
+          - name: "demographics"
+            location: "s3a://data-lake/users/demographics"
+            id: "c3d4e5f6-a7b8-4c9d-0e1f-2a3b4c5d6e7f"
+
+# Server configuration
+host: "0.0.0.0"
+port: 8080
+endpoint: "/delta-sharing"
+
+# Security
+authorization:
+  bearerToken: "dapi1234567890abcdefghijklmnopqrstuvwxyz"
+
+# Performance tuning
+preSignedUrlTimeoutSeconds: 3600
+deltaTableCacheSize: 20
+stalenessAcceptable: false
+
+# Query settings
+evaluatePredicateHints: false
+evaluateJsonPredicateHints: true
+evaluateJsonPredicateHintsV2: true
+queryTablePageSizeLimit: 10000
+queryTablePageTokenTtlMs: 259200000
+refreshTokenTtlMs: 3600000
+```
+
+## Validating Your Configuration
+
+Before starting the server, validate your configuration:
+
+<Steps>
+  <Step title="Check YAML Syntax">
+    Ensure your YAML is valid using a linter:
+    
+    ```bash
+    # Using yamllint (install with: pip install yamllint)
+    yamllint conf/delta-sharing-server.yaml
+    
+    # Using Python
+    python3 -c "import yaml; yaml.safe_load(open('conf/delta-sharing-server.yaml'))"
+    ```
+  </Step>
+  
+  <Step title="Verify Storage Paths">
+    Ensure table locations are accessible and use the correct URI scheme
+  </Step>
+  
+  <Step title="Test Unique IDs">
+    Confirm all table IDs are unique UUIDs
+  </Step>
+  
+  <Step title="Start the Server">
+    Start the server and check for configuration errors:
+    
+    ```bash
+    ./bin/delta-sharing-server -- --config conf/delta-sharing-server.yaml
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+  Common configuration mistakes:
+  - Using `s3://` instead of `s3a://` for S3 paths
+  - Duplicate table IDs
+  - Invalid YAML indentation
+  - Missing required fields (name, location, id)
+</Warning>
+
+## Environment-Specific Configurations
+
+<Tabs>
+  <Tab title="Development">
+    ```yaml
+    host: "localhost"
+    port: 8080
+    stalenessAcceptable: true  # Allow stale data
+    deltaTableCacheSize: 5     # Small cache
+    # No authorization for easier testing
+    ```
+  </Tab>
+  
+  <Tab title="Production">
+    ```yaml
+    host: "0.0.0.0"
+    port: 443  # HTTPS behind proxy
+    stalenessAcceptable: false
+    deltaTableCacheSize: 50
+    authorization:
+      bearerToken: "${DELTA_SHARING_TOKEN}"  # From environment
+    ```
+  </Tab>
+</Tabs>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Cloud Storage Authentication" icon="cloud" href="/server/cloud-storage">
+    Configure access to S3, Azure, GCS, or R2
+  </Card>
+  <Card title="Authorization Setup" icon="lock" href="/server/authorization">
+    Set up bearer tokens and security
+  </Card>
+  <Card title="Start the Server" icon="play" href="/server/docker">
+    Learn how to start and run the server
+  </Card>
+  <Card title="Create Profile Files" icon="file" href="/protocol/profile-files">
+    Generate profile files for recipients
+  </Card>
+</CardGroup>

@@ -1,0 +1,564 @@
+---
+title: 'Cloud Storage Authentication'
+description: 'Configure authentication for S3, Azure, GCS, and Cloudflare R2'
+---
+
+## Overview
+
+The Delta Sharing Reference Server needs credentials to access Delta Lake tables stored on cloud object storage. This guide covers authentication methods for all supported cloud providers.
+
+<CardGroup cols={2}>
+  <Card title="AWS S3" icon="aws">
+    IAM roles, environment variables, or credential files
+  </Card>
+  <Card title="Azure Blob Storage" icon="microsoft">
+    Shared key authentication via Hadoop configuration
+  </Card>
+  <Card title="Azure Data Lake Gen2" icon="microsoft">
+    Shared key authentication for ADLS Gen2
+  </Card>
+  <Card title="Google Cloud Storage" icon="google">
+    Service account credentials
+  </Card>
+  <Card title="Cloudflare R2" icon="cloudflare">
+    S3-compatible API with access tokens
+  </Card>
+</CardGroup>
+
+## AWS S3
+
+The server uses `hadoop-aws` to access S3. Table locations in your configuration must use `s3a://` URIs (not `s3://`).
+
+```yaml
+tables:
+  - name: "my_table"
+    location: "s3a://my-bucket/path/to/table"  # Note: s3a:// not s3://
+    id: "00000000-0000-0000-0000-000000000000"
+```
+
+### EC2 IAM Metadata Authentication (Recommended)
+
+For servers running on Amazon EC2, the recommended approach is to use IAM roles.
+
+<Steps>
+  <Step title="Create an IAM Role">
+    Create an IAM role with a policy that grants access to your S3 buckets:
+    
+    ```json
+    {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Action": [
+            "s3:GetObject",
+            "s3:ListBucket"
+          ],
+          "Resource": [
+            "arn:aws:s3:::my-bucket",
+            "arn:aws:s3:::my-bucket/*"
+          ]
+        }
+      ]
+    }
+    ```
+  </Step>
+  
+  <Step title="Attach Role to EC2 Instance">
+    Attach the IAM role to your EC2 instance through the AWS Console or CLI:
+    
+    ```bash
+    aws ec2 associate-iam-instance-profile \
+      --instance-id i-1234567890abcdef0 \
+      --iam-instance-profile Name=DeltaSharingServerRole
+    ```
+  </Step>
+  
+  <Step title="Start the Server">
+    The server automatically queries the [EC2 Instance Metadata Service](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-instance-metadata.html) for credentials. No additional configuration needed!
+  </Step>
+</Steps>
+
+<Info>
+  This method is the most secure as credentials are automatically rotated and never stored on disk.
+</Info>
+
+### Environment Variables Authentication
+
+For development or non-EC2 deployments, use AWS environment variables:
+
+```bash
+export AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
+export AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+export AWS_REGION=us-west-2  # Optional but recommended
+```
+
+Then start the server:
+
+```bash
+./bin/delta-sharing-server -- --config conf/delta-sharing-server.yaml
+```
+
+<Warning>
+  Never commit AWS credentials to version control. Use environment variables or IAM roles.
+</Warning>
+
+### AWS Credentials File
+
+You can also use the standard AWS credentials file (`~/.aws/credentials`):
+
+```ini
+[default]
+aws_access_key_id = AKIAIOSFODNN7EXAMPLE
+aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+region = us-west-2
+```
+
+The server will automatically read credentials from this file.
+
+### Session Tokens (Temporary Credentials)
+
+For temporary credentials with session tokens:
+
+```bash
+export AWS_ACCESS_KEY_ID=ASIAIOSFODNN7EXAMPLE
+export AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+export AWS_SESSION_TOKEN=FwoGZXIvYXdzEBQaD...
+```
+
+### Additional S3 Configuration
+
+For advanced S3 configurations, create `conf/core-site.xml`:
+
+```xml
+<?xml version="1.0"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<configuration>
+  <!-- S3 endpoint for non-AWS S3-compatible storage -->
+  <property>
+    <name>fs.s3a.endpoint</name>
+    <value>s3.us-west-2.amazonaws.com</value>
+  </property>
+  
+  <!-- Enable SSL -->
+  <property>
+    <name>fs.s3a.connection.ssl.enabled</name>
+    <value>true</value>
+  </property>
+  
+  <!-- Path style access (for MinIO, etc.) -->
+  <property>
+    <name>fs.s3a.path.style.access</name>
+    <value>true</value>
+  </property>
+</configuration>
+```
+
+<Accordion title="More S3 Authentication Methods">
+  See the [hadoop-aws documentation](https://hadoop.apache.org/docs/stable/hadoop-aws/tools/hadoop-aws/index.html#S3A_Authentication_methods) for additional authentication options including:
+  - Anonymous access
+  - AssumeRole authentication
+  - Web identity token authentication
+  - Custom credential providers
+</Accordion>
+
+## Azure Blob Storage
+
+The server uses `hadoop-azure` to access Azure Blob Storage. Table locations use `wasbs://` URIs.
+
+```yaml
+tables:
+  - name: "azure_table"
+    location: "wasbs://container@account.blob.core.windows.net/path/to/table"
+    id: "00000000-0000-0000-0000-000000000001"
+```
+
+### Shared Key Authentication
+
+<Steps>
+  <Step title="Get Your Storage Account Key">
+    Find your storage account key in the Azure Portal:
+    1. Navigate to your Storage Account
+    2. Go to **Settings > Access keys**
+    3. Copy either key1 or key2
+  </Step>
+  
+  <Step title="Create core-site.xml">
+    Create or edit `conf/core-site.xml` in your server directory:
+    
+    ```xml
+    <?xml version="1.0"?>
+    <?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+    <configuration>
+      <property>
+        <name>fs.azure.account.key.YOUR-ACCOUNT-NAME.blob.core.windows.net</name>
+        <value>YOUR-ACCOUNT-KEY</value>
+      </property>
+    </configuration>
+    ```
+    
+    Replace:
+    - `YOUR-ACCOUNT-NAME`: Your Azure storage account name
+    - `YOUR-ACCOUNT-KEY`: The account key from step 1
+  </Step>
+  
+  <Step title="Secure the Configuration File">
+    Protect the configuration file since it contains sensitive credentials:
+    
+    ```bash
+    chmod 600 conf/core-site.xml
+    ```
+  </Step>
+</Steps>
+
+### Multiple Storage Accounts
+
+To configure access to multiple storage accounts:
+
+```xml
+<?xml version="1.0"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<configuration>
+  <property>
+    <name>fs.azure.account.key.account1.blob.core.windows.net</name>
+    <value>KEY-FOR-ACCOUNT-1</value>
+  </property>
+  <property>
+    <name>fs.azure.account.key.account2.blob.core.windows.net</name>
+    <value>KEY-FOR-ACCOUNT-2</value>
+  </property>
+</configuration>
+```
+
+## Azure Data Lake Storage Gen2
+
+ADLS Gen2 uses `abfss://` URIs and supports shared key authentication.
+
+```yaml
+tables:
+  - name: "adls_table"
+    location: "abfss://container@account.dfs.core.windows.net/path/to/table"
+    id: "00000000-0000-0000-0000-000000000002"
+```
+
+### Shared Key Authentication for ADLS Gen2
+
+Create or edit `conf/core-site.xml`:
+
+```xml
+<?xml version="1.0"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<configuration>
+  <property>
+    <name>fs.azure.account.auth.type.YOUR-ACCOUNT-NAME.dfs.core.windows.net</name>
+    <value>SharedKey</value>
+    <description>Authentication type for ADLS Gen2</description>
+  </property>
+  <property>
+    <name>fs.azure.account.key.YOUR-ACCOUNT-NAME.dfs.core.windows.net</name>
+    <value>YOUR-ACCOUNT-KEY</value>
+    <description>Storage account key</description>
+  </property>
+</configuration>
+```
+
+<Note>
+  Replace `YOUR-ACCOUNT-NAME` with your storage account name and `YOUR-ACCOUNT-KEY` with your account key.
+</Note>
+
+### OAuth 2.0 Authentication (Advanced)
+
+For OAuth-based authentication, see the [hadoop-azure ABFS documentation](https://hadoop.apache.org/docs/stable/hadoop-azure/abfs.html).
+
+## Google Cloud Storage
+
+The server supports GCS using service account credentials. Table locations use `gs://` URIs.
+
+```yaml
+tables:
+  - name: "gcs_table"
+    location: "gs://my-bucket/path/to/table"
+    id: "00000000-0000-0000-0000-000000000003"
+```
+
+### Service Account Authentication
+
+<Steps>
+  <Step title="Create a Service Account">
+    In the Google Cloud Console:
+    1. Go to **IAM & Admin > Service Accounts**
+    2. Click **Create Service Account**
+    3. Give it a name like "delta-sharing-server"
+    4. Grant it **Storage Object Viewer** role (or a custom role with `storage.objects.get` and `storage.objects.list` permissions)
+  </Step>
+  
+  <Step title="Generate a Key File">
+    1. Click on the service account
+    2. Go to **Keys > Add Key > Create new key**
+    3. Choose **JSON** format
+    4. Download the key file (e.g., `service-account-key.json`)
+  </Step>
+  
+  <Step title="Set Environment Variable">
+    Point to the service account key file before starting the server:
+    
+    ```bash
+    export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account-key.json"
+    ```
+    
+    Or in your systemd service file:
+    
+    ```ini
+    [Service]
+    Environment="GOOGLE_APPLICATION_CREDENTIALS=/opt/delta-sharing-server/conf/gcp-key.json"
+    ```
+  </Step>
+  
+  <Step title="Secure the Key File">
+    Protect the key file:
+    
+    ```bash
+    chmod 600 /path/to/service-account-key.json
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+  Keep your service account key file secure. Never commit it to version control or expose it publicly.
+</Warning>
+
+### Verifying GCS Access
+
+Test that your credentials work:
+
+```bash
+# Install gsutil if needed
+export GOOGLE_APPLICATION_CREDENTIALS="/path/to/key.json"
+
+# List bucket contents
+gsutil ls gs://my-bucket/
+```
+
+## Cloudflare R2
+
+Cloudflare R2 uses an S3-compatible API. Table locations use `s3a://` URIs (same as S3).
+
+```yaml
+tables:
+  - name: "r2_table"
+    location: "s3a://my-r2-bucket/path/to/table"
+    id: "00000000-0000-0000-0000-000000000004"
+```
+
+### R2 API Token Authentication
+
+<Steps>
+  <Step title="Generate R2 API Token">
+    In the Cloudflare dashboard:
+    1. Go to **R2 > Overview**
+    2. Click **Manage R2 API Tokens**
+    3. Click **Create API Token**
+    4. Set permissions (Read for the server)
+    5. Save the **Access Key ID** and **Secret Access Key**
+  </Step>
+  
+  <Step title="Get Your Account ID">
+    Find your Cloudflare account ID in the R2 dashboard URL or in **Account Settings**
+  </Step>
+  
+  <Step title="Create core-site.xml">
+    Create `conf/core-site.xml` with R2-specific configuration:
+    
+    ```xml
+    <?xml version="1.0"?>
+    <?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+    <configuration>
+      <!-- R2 Access Credentials -->
+      <property>
+        <name>fs.s3a.access.key</name>
+        <value>YOUR-R2-ACCESS-KEY-ID</value>
+      </property>
+      <property>
+        <name>fs.s3a.secret.key</name>
+        <value>YOUR-R2-SECRET-ACCESS-KEY</value>
+      </property>
+      
+      <!-- R2 Endpoint -->
+      <property>
+        <name>fs.s3a.endpoint</name>
+        <value>https://YOUR-ACCOUNT-ID.r2.cloudflarestorage.com</value>
+      </property>
+      
+      <!-- R2 requires lower MaxKeys limit -->
+      <property>
+        <name>fs.s3a.paging.maximum</name>
+        <value>1000</value>
+        <description>R2 supports MaxKeys <= 1000 (Hadoop default is 5000)</description>
+      </property>
+    </configuration>
+    ```
+    
+    Replace:
+    - `YOUR-R2-ACCESS-KEY-ID`: Your R2 access key
+    - `YOUR-R2-SECRET-ACCESS-KEY`: Your R2 secret key
+    - `YOUR-ACCOUNT-ID`: Your Cloudflare account ID
+  </Step>
+</Steps>
+
+<Warning>
+  **Important Limitations:**
+  - S3 and R2 credentials **cannot be configured simultaneously** in the same server instance
+  - R2 only supports `MaxKeys <= 1000` in list operations (vs. Hadoop's default of 5000)
+  - Some advanced S3 features may not be available in R2
+</Warning>
+
+### R2 vs S3 Configuration
+
+<Tabs>
+  <Tab title="Cloudflare R2">
+    ```xml
+    <property>
+      <name>fs.s3a.endpoint</name>
+      <value>https://abc123.r2.cloudflarestorage.com</value>
+    </property>
+    <property>
+      <name>fs.s3a.paging.maximum</name>
+      <value>1000</value>
+    </property>
+    ```
+  </Tab>
+  
+  <Tab title="AWS S3">
+    ```xml
+    <!-- Usually no endpoint configuration needed -->
+    <!-- Uses AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY -->
+    <property>
+      <name>fs.s3a.endpoint</name>
+      <value>s3.amazonaws.com</value>
+    </property>
+    ```
+  </Tab>
+</Tabs>
+
+## Mixed Cloud Storage
+
+You can share tables from multiple cloud providers in a single server instance:
+
+```yaml
+version: 1
+
+shares:
+  - name: "multi_cloud_share"
+    schemas:
+      - name: "datasets"
+        tables:
+          # S3 table
+          - name: "s3_data"
+            location: "s3a://aws-bucket/data"
+            id: "11111111-1111-1111-1111-111111111111"
+          
+          # Azure Blob table
+          - name: "azure_data"
+            location: "wasbs://container@account.blob.core.windows.net/data"
+            id: "22222222-2222-2222-2222-222222222222"
+          
+          # GCS table
+          - name: "gcs_data"
+            location: "gs://gcs-bucket/data"
+            id: "33333333-3333-3333-3333-333333333333"
+```
+
+Ensure you've configured credentials for all providers being used.
+
+## Configuration File Security
+
+<Warning>
+  The `core-site.xml` file contains sensitive credentials. Follow these security best practices:
+</Warning>
+
+```bash
+# Restrict file permissions
+chmod 600 conf/core-site.xml
+
+# Ensure correct ownership
+chown delta-sharing-user:delta-sharing-group conf/core-site.xml
+
+# Never commit to version control
+echo "conf/core-site.xml" >> .gitignore
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="S3 Access Denied">
+    **Symptoms:** `AccessDenied` or `403 Forbidden` errors
+    
+    **Solutions:**
+    - Verify IAM permissions include `s3:GetObject` and `s3:ListBucket`
+    - Check bucket policies don't deny access
+    - Ensure you're using `s3a://` not `s3://`
+    - Verify AWS credentials are correctly set
+  </Accordion>
+  
+  <Accordion title="Azure Authentication Failures">
+    **Symptoms:** `No credentials found` or authentication errors
+    
+    **Solutions:**
+    - Confirm `core-site.xml` is in the `conf/` directory
+    - Verify account name and key are correct
+    - Check that account name in configuration matches the URI
+    - Ensure no extra spaces in the XML configuration
+  </Accordion>
+  
+  <Accordion title="GCS Permission Issues">
+    **Symptoms:** `403 Forbidden` or `Invalid grant` errors
+    
+    **Solutions:**
+    - Verify `GOOGLE_APPLICATION_CREDENTIALS` environment variable is set
+    - Check service account has correct permissions
+    - Ensure key file is valid JSON and not corrupted
+    - Confirm service account hasn't been disabled
+  </Accordion>
+  
+  <Accordion title="R2 Connection Failures">
+    **Symptoms:** `Connection refused` or `Unknown host` errors
+    
+    **Solutions:**
+    - Verify account ID in endpoint URL is correct
+    - Check that `fs.s3a.paging.maximum` is set to 1000 or less
+    - Ensure R2 API token has read permissions
+    - Confirm endpoint URL format: `https://{account-id}.r2.cloudflarestorage.com`
+  </Accordion>
+</AccordionGroup>
+
+## Testing Your Configuration
+
+After configuring cloud storage authentication, test it:
+
+```bash
+# Start the server with verbose logging
+./bin/delta-sharing-server -- --config conf/delta-sharing-server.yaml
+
+# In another terminal, test with curl
+curl -H "Authorization: Bearer YOUR_TOKEN" \
+  http://localhost:8080/delta-sharing/shares
+```
+
+If configured correctly, you should see a JSON response with your shares.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configure Authorization" icon="shield" href="/server/authorization">
+    Set up bearer tokens and secure your server
+  </Card>
+  <Card title="Start the Server" icon="play" href="/server/docker">
+    Run the server with your configuration
+  </Card>
+  <Card title="Create Profile Files" icon="id-card" href="/protocol/profile-files">
+    Generate profile files for recipients
+  </Card>
+  <Card title="Test with Clients" icon="laptop-code" href="/clients/python/quickstart">
+    Access shared data with client libraries
+  </Card>
+</CardGroup>

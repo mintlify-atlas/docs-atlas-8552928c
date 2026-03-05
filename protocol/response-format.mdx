@@ -1,0 +1,648 @@
+---
+title: Response Format
+description: Detailed specification of Delta Sharing API response formats
+---
+
+Delta Sharing APIs return responses in two formats: **Parquet Format** (default) and **Delta Format** (advanced features). Responses use newline-delimited JSON (NDJSON) where each line contains a single JSON object.
+
+## Response Format Selection
+
+The format is controlled by the `delta-sharing-capabilities` header:
+
+```http
+delta-sharing-capabilities: responseformat=parquet
+# or
+delta-sharing-capabilities: responseformat=delta;readerfeatures=deletionvectors
+```
+
+<Info>
+**Format Selection:**
+- **No header**: Defaults to Parquet format
+- **`responseformat=parquet`**: Parquet format (compatible with all connectors)
+- **`responseformat=delta`**: Delta format (enables advanced features like deletion vectors, column mapping)
+- **`responseformat=delta,parquet`**: Server chooses based on table features
+</Info>
+
+---
+
+## Parquet Format Responses
+
+The Parquet format is used by Delta Sharing v1.0 and later. It's the default format and compatible with all existing Delta Sharing connectors.
+
+### JSON Wrapper Object
+
+Each line contains exactly **one** of these fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `protocol` | Object | Protocol versioning information |
+| `metaData` | Object | Table metadata (schema, partitions, etc.) |
+| `file` | Object | Individual data file reference |
+| `add` | Object | Add file action (for CDF/streaming) |
+| `cdf` | Object | Change data file reference |
+| `remove` | Object | Remove file action (for CDF/streaming) |
+| `endStreamAction` | Object | End of stream marker (optional) |
+
+### Protocol Object
+
+Defines the minimum protocol version clients must support.
+
+<CodeGroup>
+```json Example
+{
+  "protocol": {
+    "minReaderVersion": 1
+  }
+}
+```
+</CodeGroup>
+
+<ResponseField name="protocol.minReaderVersion" type="integer" required>
+  Minimum protocol version required to read the table. Currently always `1`. Will increase for non-forward-compatible changes.
+</ResponseField>
+
+<Note>
+Clients can safely ignore unrecognized fields in responses that support their reader version.
+</Note>
+
+### Metadata Object
+
+Contains comprehensive table metadata including schema, partitioning, and configuration.
+
+<CodeGroup>
+```json Example
+{
+  "metaData": {
+    "id": "f8d5c169-3d01-4ca3-ad9e-7dc3355aedb2",
+    "name": "customer_table",
+    "description": "Customer data table",
+    "location": "s3://my-bucket/tables/customer",
+    "auxiliaryLocations": [
+      "s3://secondary-bucket/tables/customer"
+    ],
+    "accessModes": ["url", "dir"],
+    "format": {
+      "provider": "parquet"
+    },
+    "schemaString": "{\"type\":\"struct\",\"fields\":[{\"name\":\"id\",\"type\":\"long\",\"nullable\":false,\"metadata\":{}},{\"name\":\"name\",\"type\":\"string\",\"nullable\":true,\"metadata\":{}}]}",
+    "partitionColumns": ["date"],
+    "configuration": {
+      "enableChangeDataFeed": "true"
+    },
+    "version": 123,
+    "size": 1048576,
+    "numFiles": 42
+  }
+}
+```
+</CodeGroup>
+
+<ResponseField name="metaData.id" type="string" required>
+  Unique identifier for the table (typically UUID)
+</ResponseField>
+
+<ResponseField name="metaData.name" type="string" optional>
+  User-provided table name
+</ResponseField>
+
+<ResponseField name="metaData.description" type="string" optional>
+  User-provided table description
+</ResponseField>
+
+<ResponseField name="metaData.location" type="string" optional>
+  Root directory of the table where delta log exists. Required for tables supporting `dir` access mode.
+</ResponseField>
+
+<ResponseField name="metaData.auxiliaryLocations" type="array" optional>
+  Additional storage locations for table files. Most tables only use the root location.
+</ResponseField>
+
+<ResponseField name="metaData.accessModes" type="array" optional>
+  Supported access modes: `["url"]`, `["dir"]`, or both. If absent, assume URL-only access.
+</ResponseField>
+
+<ResponseField name="metaData.format" type="object" required>
+  Data file encoding specification
+  
+  <Expandable title="Format Object">
+    <ResponseField name="provider" type="string" required>
+      File format. Currently only `"parquet"` is supported.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="metaData.schemaString" type="string" required>
+  Serialized JSON string representing the table schema. Parse this string to get the [Schema Object](#schema-object).
+</ResponseField>
+
+<ResponseField name="metaData.partitionColumns" type="array" required>
+  Array of column names used for partitioning. Empty array if table is not partitioned.
+</ResponseField>
+
+<ResponseField name="metaData.configuration" type="object" optional>
+  Map of table configuration options (e.g., `{"enableChangeDataFeed": "true"}`)
+</ResponseField>
+
+<ResponseField name="metaData.version" type="long" optional>
+  Table version this metadata corresponds to (returned for versioned/CDF queries)
+</ResponseField>
+
+<ResponseField name="metaData.size" type="long" optional>
+  Total table size in bytes (if available in delta log)
+</ResponseField>
+
+<ResponseField name="metaData.numFiles" type="long" optional>
+  Total number of files in the table (if available in delta log)
+</ResponseField>
+
+### File Object
+
+Represents a single data file in the table with a pre-signed URL.
+
+<CodeGroup>
+```json Example
+{
+  "file": {
+    "url": "https://bucket.s3.us-west-2.amazonaws.com/table/date%3D2021-04-28/part-00000-591723a8.snappy.parquet?X-Amz-Expires=900...",
+    "id": "591723a8-6a27-4240-a90e-57426f4736d2",
+    "partitionValues": {
+      "date": "2021-04-28"
+    },
+    "size": 573,
+    "stats": "{\"numRecords\":1,\"minValues\":{\"eventTime\":\"2021-04-28T23:33:48.719Z\"},\"maxValues\":{\"eventTime\":\"2021-04-28T23:33:48.719Z\"},\"nullCount\":{\"eventTime\":0}}",
+    "version": 123,
+    "timestamp": 1652140800000,
+    "expirationTimestamp": 1652144400000
+  }
+}
+```
+</CodeGroup>
+
+<ResponseField name="file.url" type="string" required>
+  HTTPS pre-signed URL to read the file. URLs may differ across responses for the same file.
+</ResponseField>
+
+<ResponseField name="file.id" type="string" required>
+  Unique identifier guaranteed to be the same across requests. Use as cache key.
+</ResponseField>
+
+<ResponseField name="file.partitionValues" type="object" required>
+  Map of partition column to value. Empty object `{}` for non-partitioned tables. See [Partition Value Serialization](#partition-value-serialization).
+</ResponseField>
+
+<ResponseField name="file.size" type="long" required>
+  File size in bytes
+</ResponseField>
+
+<ResponseField name="file.stats" type="string" optional>
+  Serialized JSON string with file statistics. Parse to get [Statistics Object](#per-file-statistics). May be absent.
+</ResponseField>
+
+<ResponseField name="file.version" type="long" optional>
+  Table version of the file (for versioned queries)
+</ResponseField>
+
+<ResponseField name="file.timestamp" type="long" optional>
+  Unix timestamp in milliseconds of the table version (for versioned queries)
+</ResponseField>
+
+<ResponseField name="file.expirationTimestamp" type="long" optional>
+  Unix timestamp in milliseconds when the URL expires
+</ResponseField>
+
+### Data Change File Actions
+
+Used in streaming and CDF queries to represent changes to the table.
+
+<Accordion title="Add File Action">
+  Represents a file added to the table.
+  
+  ```json
+  {
+    "add": {
+      "url": "https://...",
+      "id": "591723a8-6a27-4240-a90e-57426f4736d2",
+      "partitionValues": {"date": "2021-04-28"},
+      "size": 573,
+      "timestamp": 1652140800000,
+      "version": 1,
+      "stats": "{...}",
+      "expirationTimestamp": 1652144400000
+    }
+  }
+  ```
+  
+  **Fields:** Same as File object, but `timestamp` and `version` are **required**.
+</Accordion>
+
+<Accordion title="CDF File Action">
+  Represents a change data feed file.
+  
+  ```json
+  {
+    "cdf": {
+      "url": "https://.../table/_change_data/date%3D2021-04-28/part-00000.snappy.parquet?...",
+      "id": "591723a8-6a27-4240-a90e-57426f4736d2",
+      "partitionValues": {"date": "2021-04-28"},
+      "size": 689,
+      "timestamp": 1652141000000,
+      "version": 1,
+      "expirationTimestamp": 1652144600000
+    }
+  }
+  ```
+  
+  CDF files contain three metadata columns:
+  - `_change_type`: `insert`, `update_preimage`, `update_postimage`, or `delete`
+  - `_commit_version`: Table version of the change
+  - `_commit_timestamp`: Unix timestamp in milliseconds
+</Accordion>
+
+<Accordion title="Remove File Action">
+  Represents a file removed from the table.
+  
+  ```json
+  {
+    "remove": {
+      "url": "https://...",
+      "id": "591723a8-6a27-4240-a90e-57426f4736d2",
+      "partitionValues": {"date": "2021-04-28"},
+      "size": 573,
+      "timestamp": 1652140800000,
+      "version": 1,
+      "expirationTimestamp": 1652144400000
+    }
+  }
+  ```
+</Accordion>
+
+### EndStreamAction
+
+Optional action marking the end of a response stream.
+
+<CodeGroup>
+```json Example
+{
+  "refreshToken": "Server-Encoded-Refresh-Token",
+  "nextPageToken": "page-token-123",
+  "minUrlExpirationTimestamp": 1652140800000
+}
+```
+
+```json Error Example
+{
+  "errorMessage": "An error occurred while processing the request."
+}
+```
+</CodeGroup>
+
+<ResponseField name="refreshToken" type="string" optional>
+  Token for refreshing pre-signed URLs in snapshot queries
+</ResponseField>
+
+<ResponseField name="nextPageToken" type="string" optional>
+  Token for fetching next page in paginated queries
+</ResponseField>
+
+<ResponseField name="minUrlExpirationTimestamp" type="long" optional>
+  Minimum URL expiration timestamp across all files in the response
+</ResponseField>
+
+<ResponseField name="errorMessage" type="string" optional>
+  Error message for failures during HTTP streaming. **Client must fail the query when present.**
+</ResponseField>
+
+---
+
+## Delta Format Responses
+
+Delta format enables support for advanced Delta Lake features (deletion vectors, column mapping, etc.). Responses contain Delta actions that can be used to construct a local delta log.
+
+### JSON Wrapper Object (Delta)
+
+Each line contains exactly **one** of:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `protocol` | Object | Delta protocol wrapper |
+| `metaData` | Object | Delta metadata wrapper |
+| `file` | Object | Delta single action wrapper |
+
+### Protocol (Delta Format)
+
+<CodeGroup>
+```json Example
+{
+  "protocol": {
+    "deltaProtocol": {
+      "minReaderVersion": 3,
+      "minWriterVersion": 7,
+      "readerFeatures": ["deletionVectors"],
+      "writerFeatures": ["deletionVectors"]
+    }
+  }
+}
+```
+</CodeGroup>
+
+<ResponseField name="protocol.deltaProtocol" type="object" required>
+  Standard [Delta Protocol](https://github.com/delta-io/delta/blob/master/PROTOCOL.md#protocol-evolution) object. Must be parsed by a Delta library.
+</ResponseField>
+
+### Metadata (Delta Format)
+
+<CodeGroup>
+```json Example
+{
+  "metaData": {
+    "version": 20,
+    "size": 123456,
+    "numFiles": 5,
+    "location": "s3://bucket/table",
+    "auxiliaryLocations": ["s3://bucket-aux/table"],
+    "accessModes": ["url", "dir"],
+    "deltaMetadata": {
+      "id": "f8d5c169-3d01-4ca3-ad9e-7dc3355aedb2",
+      "partitionColumns": ["date"],
+      "format": {"provider": "parquet"},
+      "schemaString": "{...}",
+      "configuration": {
+        "enableChangeDataFeed": "true",
+        "delta.enableDeletionVectors": "true"
+      }
+    }
+  }
+}
+```
+</CodeGroup>
+
+<ResponseField name="metaData.deltaMetadata" type="object" required>
+  Standard [Delta Metadata](https://github.com/delta-io/delta/blob/master/PROTOCOL.md#change-metadata) object. Must be parsed by a Delta library.
+</ResponseField>
+
+<ResponseField name="metaData.version" type="long" optional>
+  Table version (for versioned/CDF queries)
+</ResponseField>
+
+<ResponseField name="metaData.size" type="long" optional>
+  Table size in bytes
+</ResponseField>
+
+<ResponseField name="metaData.numFiles" type="long" optional>
+  Number of files in table
+</ResponseField>
+
+<ResponseField name="metaData.location" type="string" optional>
+  Root directory (required for `dir` access)
+</ResponseField>
+
+<ResponseField name="metaData.auxiliaryLocations" type="array" optional>
+  Additional storage locations
+</ResponseField>
+
+<ResponseField name="metaData.accessModes" type="array" optional>
+  Supported access modes
+</ResponseField>
+
+### File (Delta Format)
+
+Wraps a Delta single action (Add, Remove, or CDC).
+
+<CodeGroup>
+```json Add File Example
+{
+  "file": {
+    "id": "591723a8-6a27-4240-a90e-57426f4736d2",
+    "deletionVectorFileId": "dv-abc123",
+    "version": 123,
+    "timestamp": 1652140800000,
+    "expirationTimestamp": 1652144400000,
+    "deltaSingleAction": {
+      "add": {
+        "path": "https://bucket.s3.amazonaws.com/table/part-00000.snappy.parquet?...",
+        "partitionValues": {"date": "2021-04-28"},
+        "size": 573,
+        "modificationTime": 1652140000000,
+        "dataChange": true,
+        "stats": "{...}",
+        "deletionVector": {
+          "storageType": "u",
+          "pathOrInlineDv": "vBn[lx{q8@P<9BNH/isA",
+          "offset": 1,
+          "sizeInBytes": 36,
+          "cardinality": 2
+        }
+      }
+    }
+  }
+}
+```
+</CodeGroup>
+
+<ResponseField name="file.id" type="string" required>
+  Unique file identifier (consistent across requests)
+</ResponseField>
+
+<ResponseField name="file.deletionVectorFileId" type="string" optional>
+  Unique identifier for deletion vector file (if present)
+</ResponseField>
+
+<ResponseField name="file.version" type="long" optional>
+  Table version (for versioned queries)
+</ResponseField>
+
+<ResponseField name="file.timestamp" type="long" optional>
+  Unix timestamp in milliseconds
+</ResponseField>
+
+<ResponseField name="file.expirationTimestamp" type="long" optional>
+  URL expiration timestamp
+</ResponseField>
+
+<ResponseField name="file.deltaSingleAction" type="object" required>
+  Standard Delta single action (`add`, `remove`, or `cdc`) with `path` replaced by pre-signed URL. Must be parsed by Delta library.
+</ResponseField>
+
+<Warning>
+**Important:** In Delta format, the `path` field in the `deltaSingleAction` contains the pre-signed URL, not the relative file path.
+</Warning>
+
+---
+
+## Schema Object
+
+Table schemas use a subset of Spark SQL's JSON schema representation.
+
+### Struct Type
+
+<CodeGroup>
+```json Example
+{
+  "type": "struct",
+  "fields": [
+    {
+      "name": "id",
+      "type": "long",
+      "nullable": false,
+      "metadata": {"comment": "Unique identifier"}
+    },
+    {
+      "name": "data",
+      "type": {
+        "type": "struct",
+        "fields": [
+          {"name": "value", "type": "string", "nullable": true, "metadata": {}}
+        ]
+      },
+      "nullable": true,
+      "metadata": {}
+    }
+  ]
+}
+```
+</CodeGroup>
+
+**Struct Field:**
+- `name`: Column name
+- `type`: Type name (primitive, struct, array, or map)
+- `nullable`: Whether column can be null
+- `metadata`: JSON map with additional info (e.g., comments)
+
+### Primitive Types
+
+| Type | Description |
+|------|-------------|
+| `string` | UTF-8 string |
+| `long` | 8-byte signed integer |
+| `integer` | 4-byte signed integer |
+| `short` | 2-byte signed integer |
+| `byte` | 1-byte signed integer |
+| `float` | 4-byte floating-point |
+| `double` | 8-byte floating-point |
+| `boolean` | true or false |
+| `binary` | Binary data |
+| `date` | Calendar date (year-month-day) |
+| `timestamp` | Microsecond precision timestamp (no timezone) |
+| `decimal` | Fixed precision/scale decimal (max 38 digits) |
+
+### Complex Types
+
+<Accordion title="Array Type">
+  ```json
+  {
+    "type": "array",
+    "elementType": "integer",
+    "containsNull": false
+  }
+  ```
+  
+  - `elementType`: Type of array elements
+  - `containsNull`: Whether array can contain nulls
+</Accordion>
+
+<Accordion title="Map Type">
+  ```json
+  {
+    "type": "map",
+    "keyType": "string",
+    "valueType": "integer",
+    "valueContainsNull": true
+  }
+  ```
+  
+  - `keyType`: Type of map keys
+  - `valueType`: Type of map values
+  - `valueContainsNull`: Whether values can be null
+</Accordion>
+
+---
+
+## Partition Value Serialization
+
+Partition values in `partitionValues` maps are serialized as strings:
+
+| Type | Format | Example |
+|------|--------|----------|
+| string | No translation | `"value"` |
+| numeric | String representation | `"123"` |
+| date | `{year}-{month}-{day}` | `"1970-01-01"` |
+| timestamp | `{year}-{month}-{day} {hour}:{minute}:{second}` | `"1970-01-01 00:00:00"` |
+| boolean | `"true"` or `"false"` | `"true"` |
+
+<Note>
+An empty string for any type represents a `null` partition value.
+</Note>
+
+---
+
+## Per-file Statistics
+
+File objects may include statistics in the `stats` field (serialized JSON string).
+
+### Global Statistics
+
+| Statistic | Description |
+|-----------|-------------|
+| `numRecords` | Total number of records in file |
+
+### Per-column Statistics
+
+Statistics mirror the data schema:
+
+| Statistic | Description |
+|-----------|-------------|
+| `nullCount` | Number of null values per column |
+| `minValues` | Minimum value per column |
+| `maxValues` | Maximum value per column |
+
+<CodeGroup>
+```json Simple Example
+{
+  "numRecords": 1000,
+  "minValues": {"id": 1, "price": 9.99},
+  "maxValues": {"id": 1000, "price": 999.99},
+  "nullCount": {"id": 0, "price": 5}
+}
+```
+
+```json Nested Example
+{
+  "numRecords": 1000,
+  "minValues": {
+    "user": {
+      "id": 1,
+      "profile": {"age": 18}
+    }
+  },
+  "maxValues": {
+    "user": {
+      "id": 1000,
+      "profile": {"age": 99}
+    }
+  },
+  "nullCount": {
+    "user": {
+      "id": 0,
+      "profile": {"age": 10}
+    }
+  }
+}
+```
+</CodeGroup>
+
+<Info>
+Statistics are optional and may be missing. Servers use them for query optimization and file pruning.
+</Info>
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="REST APIs" icon="code" href="/protocol/rest-apis">
+    Explore REST API endpoints
+  </Card>
+  <Card title="Filtering" icon="filter" href="/protocol/filtering">
+    Learn about data filtering
+  </Card>
+</CardGroup>

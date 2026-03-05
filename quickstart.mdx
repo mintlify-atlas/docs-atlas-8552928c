@@ -1,80 +1,418 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Get started with Delta Sharing in minutes - install, connect, and query shared data
 ---
 
-## Get started in three steps
+This guide will get you reading shared data in minutes using the Delta Sharing Python connector.
 
-Get your documentation site running locally and make your first customization.
+## Prerequisites
 
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+- **Python 3.8+** (Python 3.6+ for delta-sharing versions < 1.1)
+- **pip** (latest version recommended)
+- **Linux users**: glibc version >= 2.31 for automatic installation
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+If you're using [Databricks Runtime](https://docs.databricks.com/runtime/dbr.html), follow the [Databricks Libraries documentation](https://docs.databricks.com/libraries/index.html) to install on your clusters.
 </Note>
+
+## Step 1: Install Delta Sharing
+
+<Steps>
+  <Step title="Install via pip">
+    Install the Delta Sharing Python connector:
+    
+    ```bash
+    pip install delta-sharing
+    ```
+    
+    <Accordion title="Troubleshooting Installation">
+      If installation fails due to `delta-kernel-rust-sharing-wrapper`:
+      
+      1. **Check Python version**: `python --version` (must be 3.8+)
+      2. **Upgrade pip**: `pip install --upgrade pip`
+      3. **Check glibc version** (Linux): `ldd --version` (must be 2.31+)
+      4. **Install Rust** if needed: Follow the [Rust installation guide](https://www.rust-lang.org/tools/install)
+      
+      Alternatively, use an older version without Rust dependency:
+      ```bash
+      pip install delta-sharing==1.0.5
+      ```
+    </Accordion>
+  </Step>
+  
+  <Step title="Verify Installation">
+    Verify the installation:
+    
+    ```python
+    import delta_sharing
+    print(delta_sharing.__version__)
+    ```
+  </Step>
+</Steps>
+
+## Step 2: Get a Profile File
+
+A **profile file** is a JSON file containing credentials to access a Delta Sharing Server.
+
+<Tabs>
+  <Tab title="Use Example Server">
+    Download the open example profile to try Delta Sharing immediately:
+    
+    ```bash
+    curl -O https://databricks-datasets-oregon.s3-us-west-2.amazonaws.com/delta-sharing/share/open-datasets.share
+    ```
+    
+    This profile provides access to public COVID-19 and other sample datasets.
+  </Tab>
+  
+  <Tab title="From Your Provider">
+    If your data provider has shared data with you, they will provide a `.share` profile file.
+    
+    Save it to your local filesystem or cloud storage.
+  </Tab>
+  
+  <Tab title="Run Your Own Server">
+    Set up the Delta Sharing Reference Server to share your own data.
+    
+    See the [Delta Sharing Server documentation](https://github.com/delta-io/delta-sharing#delta-sharing-reference-server) for setup instructions.
+  </Tab>
+</Tabs>
+
+<Accordion title="Profile File Format">
+  Profile files are JSON with the following structure:
+  
+  ```json
+  {
+    "shareCredentialsVersion": 1,
+    "endpoint": "https://sharing.delta.io/delta-sharing/",
+    "bearerToken": "your-bearer-token-here"
+  }
+  ```
+  
+  - **endpoint**: The Delta Sharing Server URL
+  - **bearerToken**: Authentication token for accessing shared data
+  - **shareCredentialsVersion**: Protocol version (currently 1)
+</Accordion>
+
+## Step 3: Load Data with Python
+
+Now you can read shared tables using pandas or Apache Spark.
+
+<CodeGroup>
+
+```python Pandas - Basic
+import delta_sharing
+
+# Point to the profile file
+profile_file = "open-datasets.share"
+
+# Create a SharingClient
+client = delta_sharing.SharingClient(profile_file)
+
+# List all shared tables
+tables = client.list_all_tables()
+print(tables)
+
+# Create a table URL
+# Format: <profile-path>#<share>.<schema>.<table>
+table_url = profile_file + "#delta_sharing.default.owid-covid-data"
+
+# Load first 10 rows as pandas DataFrame
+df = delta_sharing.load_as_pandas(table_url, limit=10)
+print(df)
+```
+
+```python Pandas - Full Table
+import delta_sharing
+
+profile_file = "open-datasets.share"
+table_url = profile_file + "#delta_sharing.default.owid-covid-data"
+
+# Load entire table as pandas DataFrame
+df = delta_sharing.load_as_pandas(table_url)
+
+# Filter and analyze
+usa_data = df[df["iso_code"] == "USA"]
+print(usa_data.head())
+```
+
+```python Pandas - Advanced
+import delta_sharing
+
+profile_file = "open-datasets.share"
+table_url = profile_file + "#delta_sharing.default.owid-covid-data"
+
+# Load with Delta Format for better performance
+df = delta_sharing.load_as_pandas(
+    table_url,
+    use_delta_format=True,
+    convert_in_batches=True  # Reduce memory usage
+)
+
+# Use JSON predicate hints for server-side filtering
+hint = '''{
+  "op": "equal",
+  "children": [
+    {"op": "column", "name": "iso_code", "valueType": "string"},
+    {"op": "literal", "value": "USA", "valueType": "string"}
+  ]
+}'''
+
+df_filtered = delta_sharing.load_as_pandas(
+    table_url,
+    jsonPredicateHints=hint
+)
+print(df_filtered)
+```
+
+```python PySpark
+import delta_sharing
+from pyspark.sql import SparkSession
+
+# Create Spark session
+spark = SparkSession.builder \
+    .appName("delta-sharing-quickstart") \
+    .master("local[*]") \
+    .getOrCreate()
+
+profile_file = "open-datasets.share"
+table_url = profile_file + "#delta_sharing.default.owid-covid-data"
+
+# Load as Spark DataFrame using load_as_spark
+df = delta_sharing.load_as_spark(table_url)
+
+# Query with Spark SQL
+df.where("iso_code == 'USA'") \
+  .select("iso_code", "date", "total_cases") \
+  .show(10)
+```
+
+```python Spark DataFrameReader
+from pyspark.sql import SparkSession
+
+# Create Spark with Delta Sharing connector
+spark = SparkSession.builder \
+    .appName("delta-sharing-quickstart") \
+    .config("spark.jars.packages", "io.delta:delta-sharing-spark_2.12:3.1.0") \
+    .master("local[*]") \
+    .getOrCreate()
+
+profile_file = "open-datasets.share"
+table_url = profile_file + "#delta_sharing.default.owid-covid-data"
+
+# Read using deltaSharing format
+df = spark.read.format("deltaSharing").load(table_url)
+
+# Use Spark SQL capabilities
+df.createOrReplaceTempView("covid_data")
+spark.sql("""
+    SELECT iso_code, date, total_cases 
+    FROM covid_data 
+    WHERE iso_code = 'USA' 
+    ORDER BY date DESC 
+    LIMIT 10
+""").show()
+```
+
+</CodeGroup>
+
+## Exploring Available Data
+
+Use the `SharingClient` to discover what data is available:
+
+```python
+import delta_sharing
+
+client = delta_sharing.SharingClient("open-datasets.share")
+
+# List all shares
+shares = client.list_shares()
+for share in shares:
+    print(f"Share: {share.name}")
+
+# List schemas in a share
+schemas = client.list_schemas("delta_sharing")
+for schema in schemas:
+    print(f"Schema: {schema.name}")
+
+# List tables in a schema
+tables = client.list_tables("delta_sharing", "default")
+for table in tables:
+    print(f"Table: {table.name}")
+
+# List all tables across all schemas
+all_tables = client.list_all_tables()
+for table in all_tables:
+    print(f"{table.share}.{table.schema}.{table.name}")
+```
+
+## Advanced Features
+
+### Change Data Feed (CDF)
+
+If the shared table supports history (`cdfEnabled=true`), you can query table changes:
+
+<CodeGroup>
+
+```python Pandas CDF
+import delta_sharing
+
+table_url = "profile.share#share.schema.table"
+
+# Load changes between versions
+changes = delta_sharing.load_table_changes_as_pandas(
+    table_url,
+    starting_version=0,
+    ending_version=5
+)
+
+print(changes)
+```
+
+```python Spark CDF
+import delta_sharing
+
+table_url = "profile.share#share.schema.table"
+
+# Load changes as Spark DataFrame
+changes = delta_sharing.load_table_changes_as_spark(
+    table_url,
+    starting_version=0,
+    ending_version=5
+)
+
+changes.show()
+```
+
+</CodeGroup>
+
+### Streaming with Spark
+
+Delta Sharing tables can be used as streaming sources:
+
+```scala
+val tablePath = "profile.share#share.schema.table"
+
+val stream = spark.readStream
+  .format("deltaSharing")
+  .option("startingVersion", "1")
+  .option("skipChangeCommits", "true")
+  .load(tablePath)
+
+stream.writeStream
+  .format("console")
+  .start()
+  .awaitTermination()
+```
+
+<Warning>
+`Trigger.AvailableNow` is not supported in Delta Sharing streaming as it requires Spark 3.3.0+, while Delta Sharing uses Spark 3.1.1.
+</Warning>
+
+### Profile File Paths
+
+Profile files can be stored in various locations:
+
+<Tabs>
+  <Tab title="Local File System">
+    ```python
+    profile_file = "/path/to/profile.share"
+    ```
+  </Tab>
+  
+  <Tab title="Cloud Storage (Python)">
+    Python connector supports any URL via [fsspec](https://filesystem-spec.readthedocs.io/):
+    
+    ```python
+    # S3
+    profile_file = "s3a://my-bucket/config/profile.share"
+    
+    # Azure Blob Storage
+    profile_file = "abfs://container@account.dfs.core.windows.net/profile.share"
+    
+    # Google Cloud Storage
+    profile_file = "gs://my-bucket/config/profile.share"
+    ```
+  </Tab>
+  
+  <Tab title="Cloud Storage (Spark)">
+    Spark connector supports Hadoop FileSystem URLs:
+    
+    ```python
+    # S3
+    profile_file = "s3a://my-bucket/config/profile.share"
+    
+    # HDFS
+    profile_file = "hdfs://namenode:8020/user/config/profile.share"
+    ```
+  </Tab>
+  
+  <Tab title="Databricks">
+    On Databricks, use DBFS paths:
+    
+    ```python
+    profile_file = "/dbfs/mnt/config/profile.share"
+    ```
+  </Tab>
+</Tabs>
+
+## Complete Example
+
+Here's a complete example analyzing COVID-19 data:
+
+```python
+import delta_sharing
+import pandas as pd
+
+# Download and use the example profile
+profile_file = "open-datasets.share"
+
+# Create client
+client = delta_sharing.SharingClient(profile_file)
+
+# List available tables
+print("Available tables:")
+for table in client.list_all_tables():
+    print(f"  - {table.share}.{table.schema}.{table.name}")
+
+# Load COVID-19 data
+table_url = profile_file + "#delta_sharing.default.owid-covid-data"
+df = delta_sharing.load_as_pandas(table_url)
+
+print(f"\nLoaded {len(df)} rows")
+print(f"Columns: {', '.join(df.columns)}")
+
+# Analyze USA data
+usa = df[df["iso_code"] == "USA"].copy()
+usa["date"] = pd.to_datetime(usa["date"])
+usa = usa.sort_values("date")
+
+print("\nUSA COVID-19 Statistics (Latest):")
+latest = usa.iloc[-1]
+print(f"  Date: {latest['date']}")
+print(f"  Total Cases: {latest['total_cases']:,.0f}")
+print(f"  Total Deaths: {latest['total_deaths']:,.0f}")
+```
+
+## Next Steps
+
+Now that you've successfully loaded shared data, explore more:
+
+<CardGroup cols={2}>
+  <Card title="Python API Reference" icon="python" href="https://github.com/delta-io/delta-sharing/tree/main/python">
+    Explore the full Python connector API
+  </Card>
+  <Card title="Spark Connector" icon="fire" href="https://github.com/delta-io/delta-sharing#apache-spark-connector">
+    Learn about the Apache Spark connector
+  </Card>
+  <Card title="Set Up a Server" icon="server" href="https://github.com/delta-io/delta-sharing#delta-sharing-reference-server">
+    Share your own Delta Lake tables
+  </Card>
+  <Card title="Protocol Details" icon="book" href="https://github.com/delta-io/delta-sharing/blob/main/PROTOCOL.md">
+    Deep dive into the Delta Sharing Protocol
+  </Card>
+</CardGroup>
+
+<Tip>
+Join the [Delta Lake Slack community](https://go.delta.io/slack) for help and to connect with other Delta Sharing users!
+</Tip>

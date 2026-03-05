@@ -1,0 +1,334 @@
+---
+title: Building from Source
+description: Learn how to build Delta Sharing components from source including the Python connector, Spark connector, and reference server
+icon: hammer
+---
+
+This guide covers building all Delta Sharing components from source code. You can build individual components or the entire project depending on your needs.
+
+## Prerequisites
+
+Before building Delta Sharing from source, ensure you have the following installed:
+
+<CardGroup cols={2}>
+  <Card title="Python" icon="python">
+    Python 3.8+ (or 3.6+ for older versions)
+  </Card>
+  <Card title="Java" icon="java">
+    Java 8+ for building Scala components
+  </Card>
+  <Card title="Scala" icon="code">
+    Scala 2.12.x or 2.13.x
+  </Card>
+  <Card title="Rust" icon="rust">
+    Rust toolchain (if building delta-kernel-rust from source)
+  </Card>
+</CardGroup>
+
+<Note>
+  If you're on Linux, ensure glibc version >= 2.31 for automatic delta-kernel-rust-sharing-wrapper installation.
+</Note>
+
+## Building Python Connector
+
+The Python connector can be built and installed in several ways depending on your use case.
+
+### Development Mode Installation
+
+For active development, install the package in editable mode. This allows you to make changes to the code and test them immediately without reinstalling:
+
+<Steps>
+  <Step title="Navigate to Python directory">
+    ```bash
+    cd python/
+    ```
+  </Step>
+  
+  <Step title="Install in develop mode">
+    ```bash
+    pip install -e .
+    ```
+    
+    This creates a symlink to your source code, so any changes you make are immediately reflected.
+  </Step>
+</Steps>
+
+### Local Installation
+
+For a standard local installation:
+
+```bash
+cd python/
+pip install .
+```
+
+### Building a Wheel Package
+
+To create a distributable wheel file:
+
+```bash
+cd python/
+python setup.py sdist bdist_wheel
+```
+
+This generates `python/dist/delta_sharing-x.y.z-py3-none-any.whl` that can be distributed and installed on other systems.
+
+### Handling Rust Dependencies
+
+<Warning>
+  If PyPI doesn't have a pre-built wheel for delta-kernel-rust-sharing-wrapper for your environment, pip will build from source, requiring Rust to be installed.
+</Warning>
+
+To manually build the delta-kernel-rust-sharing-wrapper:
+
+```bash
+cd python/delta-kernel-rust-sharing-wrapper
+python3 -m venv .venv
+source .venv/bin/activate
+pip3 install maturin
+maturin develop
+```
+
+If you encounter issues:
+- Verify Python version >= 3.8
+- Upgrade pip to the latest version: `pip3 install --upgrade pip`
+- Check Linux glibc version >= 2.31
+- [Install Rust](https://www.rust-lang.org/tools/install) if needed
+
+## Building Spark Connector
+
+The Apache Spark connector is built using SBT (Scala Build Tool).
+
+<Steps>
+  <Step title="Compile the project">
+    ```bash
+    build/sbt compile
+    ```
+    
+    This compiles all Scala source files in the Spark connector.
+  </Step>
+  
+  <Step title="Package the connector">
+    ```bash
+    build/sbt spark/package
+    ```
+    
+    This creates the JAR file at:
+    ```
+    spark/target/scala-2.12/delta-sharing-spark_2.12-x.y.z.jar
+    ```
+  </Step>
+  
+  <Step title="Use the connector">
+    You can now use this JAR file with Spark:
+    
+    ```bash
+    spark-shell --jars spark/target/scala-2.12/delta-sharing-spark_2.12-x.y.z.jar
+    ```
+  </Step>
+</Steps>
+
+### Building for Multiple Scala Versions
+
+The project supports both Scala 2.12 and 2.13. To build for a specific version:
+
+```bash
+# For Scala 2.12
+build/sbt ++2.12.18 spark/package
+
+# For Scala 2.13
+build/sbt ++2.13.13 spark/package
+```
+
+## Building Delta Sharing Server
+
+The reference server can be built as a packaged distribution or Docker image.
+
+### Building the Server Package
+
+Create a complete server distribution package:
+
+<Steps>
+  <Step title="Generate the package">
+    ```bash
+    build/sbt server/universal:packageBin
+    ```
+  </Step>
+  
+  <Step title="Locate the package">
+    The build generates:
+    ```
+    server/target/universal/delta-sharing-server-x.y.z.zip
+    ```
+  </Step>
+  
+  <Step title="Extract and configure">
+    ```bash
+    unzip server/target/universal/delta-sharing-server-x.y.z.zip
+    cd delta-sharing-server-x.y.z
+    cp conf/delta-sharing-server.yaml.template conf/delta-sharing-server.yaml
+    # Edit conf/delta-sharing-server.yaml with your configuration
+    ```
+  </Step>
+  
+  <Step title="Run the server">
+    ```bash
+    bin/delta-sharing-server -- --config conf/delta-sharing-server.yaml
+    ```
+  </Step>
+</Steps>
+
+### Building the Docker Image
+
+Build a local Docker image for containerized deployment:
+
+```bash
+build/sbt server/docker:publishLocal
+```
+
+This creates a Docker image tagged `delta-sharing-server:x.y.z`. Run it with:
+
+```bash
+docker run -p <host-port>:<container-port> \
+  --mount type=bind,source=<path-to-config.yaml>,target=/config/delta-sharing-server-config.yaml \
+  delta-sharing-server:x.y.z -- --config /config/delta-sharing-server-config.yaml
+```
+
+<Note>
+  The `<container-port>` must match the port specified in your configuration file.
+</Note>
+
+### Multi-platform Docker Images
+
+The server supports building for multiple platforms using Docker Buildx:
+
+```bash
+build/sbt server/docker:publish
+```
+
+By default, this builds for:
+- `linux/arm64` (Apple Silicon, ARM servers)
+- `linux/amd64` (Intel/AMD x86-64)
+
+## Building All Components
+
+<CodeGroup>
+```bash Compile Everything
+# Compile all Scala components
+build/sbt compile
+```
+
+```bash Run All Tests
+# Test all Scala components
+build/sbt test
+
+# Test Python connector
+python/dev/pytest
+```
+
+```bash Clean Build
+# Clean all build artifacts
+build/sbt clean
+
+# Clean Python build artifacts
+cd python/
+python setup.py clean --all
+rm -rf build/ dist/ *.egg-info
+```
+</CodeGroup>
+
+## Common Build Issues
+
+<AccordionGroup>
+  <Accordion title="Python build fails with delta-kernel-rust-sharing-wrapper error">
+    **Solution**: Install Rust toolchain
+    
+    ```bash
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+    source $HOME/.cargo/env
+    ```
+    
+    Or use an older delta-sharing version that doesn't require Rust:
+    
+    ```bash
+    pip3 install delta-sharing==1.0.5
+    ```
+  </Accordion>
+  
+  <Accordion title="SBT build fails with memory error">
+    **Solution**: Increase JVM memory for SBT
+    
+    ```bash
+    export SBT_OPTS="-Xmx2G -XX:+UseConcMarkSweepGC"
+    build/sbt compile
+    ```
+  </Accordion>
+  
+  <Accordion title="Docker build fails or image doesn't run">
+    **Solution**: Verify Docker is installed and running
+    
+    ```bash
+    docker --version
+    docker info
+    ```
+    
+    Ensure you have sufficient disk space for the image build.
+  </Accordion>
+  
+  <Accordion title="Tests fail due to missing dependencies">
+    **Solution**: Ensure all test dependencies are available
+    
+    For Python:
+    ```bash
+    pip install pytest pytest-cov
+    ```
+    
+    For Scala, dependencies are managed by SBT automatically.
+  </Accordion>
+</AccordionGroup>
+
+## Advanced SBT Commands
+
+For more control over the build process, you can use these SBT commands:
+
+<CodeGroup>
+```bash Cross-compilation
+# Build for all supported Scala versions
+build/sbt +publishLocal
+```
+
+```bash Continuous Compilation
+# Automatically recompile on file changes
+build/sbt ~compile
+```
+
+```bash Specific Project
+# Build only the client project
+build/sbt client/compile
+
+# Build only the server project
+build/sbt server/compile
+```
+
+```bash Run Individual Tests
+# Run a specific test suite
+build/sbt "testOnly io.delta.sharing.client.DeltaSharingClientSuite"
+```
+</CodeGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Testing" icon="flask" href="/guides/testing">
+    Run comprehensive tests on your builds
+  </Card>
+  <Card title="Contributing" icon="code-pull-request" href="/guides/contributing">
+    Learn how to contribute your changes
+  </Card>
+  <Card title="Configuration" icon="gear" href="/server/configuration">
+    Configure the Delta Sharing Server
+  </Card>
+  <Card title="Deployment" icon="rocket" href="/server/deployment">
+    Deploy your built components
+  </Card>
+</CardGroup>

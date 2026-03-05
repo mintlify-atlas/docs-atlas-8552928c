@@ -1,122 +1,135 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "Delta Sharing",
+  "theme": "aspen",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#04a8d0",
+    "light": "#046c84",
+    "dark": "#67c4d6"
   },
   "favicon": "/favicon.svg",
+  "logo": {
+    "light": "https://media.brand.dev/94033a3b-96fb-491c-9da7-291ba169d947.svg",
+    "dark": "https://media.brand.dev/94033a3b-96fb-491c-9da7-291ba169d947.svg"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/delta-io/delta-sharing"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/delta-io/delta-sharing"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
-              "index",
-              "quickstart",
-              "development"
+              "introduction",
+              "quickstart"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core Concepts",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "concepts/protocol-overview",
+              "concepts/shares-schemas-tables",
+              "concepts/access-modes",
+              "concepts/profile-files"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Python Connector",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "python/installation",
+              "python/quickstart",
+              "python/api-reference",
+              "python/advanced-usage"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Apache Spark Connector",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "spark/installation",
+              "spark/quickstart",
+              "spark/sql-usage",
+              "spark/streaming",
+              "spark/change-data-feed"
+            ]
+          },
+          {
+            "group": "Reference Server",
+            "pages": [
+              "server/overview",
+              "server/installation",
+              "server/configuration",
+              "server/cloud-storage",
+              "server/authorization",
+              "server/docker"
+            ]
+          },
+          {
+            "group": "Community Connectors",
+            "pages": [
+              "community/overview",
+              "community/connectors"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "Protocol Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Protocol Specification",
             "pages": [
-              "api-reference/introduction"
+              "protocol/overview",
+              "protocol/rest-apis",
+              "protocol/response-format",
+              "protocol/filtering"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "REST API Endpoints",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api/list-shares",
+              "api/get-share",
+              "api/list-schemas",
+              "api/list-tables",
+              "api/query-table",
+              "api/table-metadata",
+              "api/change-data-feed"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Guides",
+        "groups": [
+          {
+            "group": "Development",
+            "pages": [
+              "guides/building",
+              "guides/testing",
+              "guides/contributing"
+            ]
+          },
+          {
+            "group": "Operations",
+            "pages": [
+              "guides/security",
+              "guides/performance",
+              "guides/troubleshooting"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }
