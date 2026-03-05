@@ -1,0 +1,236 @@
+---
+title: "List All Tables"
+description: "List all tables across all schemas in a share"
+---
+
+## Endpoint
+
+```http
+GET {prefix}/shares/{share}/all-tables
+```
+
+This API lists all the tables under all schemas in a share. This is a convenience endpoint that allows you to discover all available tables without having to first list schemas.
+
+## Authentication
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token for authentication
+  
+  ```
+  Authorization: Bearer {token}
+  ```
+</ParamField>
+
+## Path Parameters
+
+<ParamField path="share" type="string" required>
+  The share name to query. Case-insensitive.
+</ParamField>
+
+## Query Parameters
+
+<ParamField query="maxResults" type="integer">
+  The maximum number of results per page that should be returned. If the number of available results is larger than `maxResults`, the response will provide a `nextPageToken` that can be used to get the next page of results in subsequent list requests.
+  
+  The server may return fewer than `maxResults` items even if there are more available. The client should check `nextPageToken` in the response to determine if there are more available.
+  
+  Must be non-negative. 0 will return no results but `nextPageToken` may be populated.
+</ParamField>
+
+<ParamField query="pageToken" type="string">
+  Specifies a page token to use. Set `pageToken` to the `nextPageToken` returned by a previous list request to get the next page of results.
+  
+  `nextPageToken` will not be returned in a response if there are no more results available.
+</ParamField>
+
+## Response
+
+### Success Response (200)
+
+<ResponseField name="items" type="array">
+  Array of table objects. May be an empty array or missing when no results are found.
+  
+  <Expandable title="Table object">
+    <ResponseField name="name" type="string" required>
+      Table name. Must not exceed 255 characters and must not contain restricted characters.
+    </ResponseField>
+    
+    <ResponseField name="schema" type="string" required>
+      Schema name. Must not exceed 255 characters and must not contain restricted characters.
+    </ResponseField>
+    
+    <ResponseField name="share" type="string" required>
+      Share name. Must not exceed 255 characters and must not contain restricted characters.
+    </ResponseField>
+    
+    <ResponseField name="shareId" type="string">
+      Unique immutable identifier for the share (UUID recommended).
+    </ResponseField>
+    
+    <ResponseField name="id" type="string">
+      Unique table identifier within the share (UUID recommended). If populated, its value should stay immutable through the table's lifecycle.
+    </ResponseField>
+    
+    <ResponseField name="location" type="string">
+      Root directory path of the table where the delta log exists. Required if the server supports `dir` based access for the table.
+    </ResponseField>
+    
+    <ResponseField name="auxiliaryLocations" type="array">
+      Optional array of additional storage locations for table files. Usually no more than one auxiliary location.
+      
+      If present, these locations should be supported in the `location` field of the Generate Temporary Table Credential request body. If a client can't read from an auxiliary location, it should fall back to URL access (if available) or fail the request.
+    </ResponseField>
+    
+    <ResponseField name="accessModes" type="array">
+      Supported access modes for the table: `url`, `dir`, or both.
+      
+      - If `url` is present, the Query Table API should be implemented for the table
+      - If `dir` is present, the Generate Temporary Table Credential API should be implemented for the table
+      - If this field is not present, the client will assume that the server only supports URL-based access
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="nextPageToken" type="string">
+  Token for retrieving the next page of results. May be an empty string or missing when there are no additional results. The client must handle both cases.
+</ResponseField>
+
+### Example Response
+
+```json
+{
+  "items": [
+    {
+      "name": "covid_data",
+      "schema": "public_health",
+      "share": "vaccine_share",
+      "shareId": "edacc4a7-6600-4fbb-85f3-a62a5ce6761f",
+      "id": "dcb1e680-7da4-4041-9be8-88aff508d001",
+      "location": "s3://my-bucket/delta-tables/covid_data",
+      "accessModes": ["url", "dir"]
+    },
+    {
+      "name": "patient_demographics",
+      "schema": "healthcare",
+      "share": "vaccine_share",
+      "shareId": "edacc4a7-6600-4fbb-85f3-a62a5ce6761f",
+      "id": "f1234567-89ab-cdef-0123-456789abcdef",
+      "location": "s3://my-bucket/delta-tables/patient_demographics",
+      "auxiliaryLocations": [
+        "s3://my-archive-bucket/patient-demographics-archive"
+      ],
+      "accessModes": ["url", "dir"]
+    }
+  ],
+  "nextPageToken": "eyJsYXN0X3NjaGVtYSI6ImhlYWx0aGNhcmUiLCJsYXN0X3RhYmxlIjoicGF0aWVudF9kZW1vZ3JhcGhpY3MifQ=="
+}
+```
+
+## Error Responses
+
+<Accordion title="400 - Bad Request">
+  The request is malformed.
+  
+  ```json
+  {
+    "errorCode": "INVALID_PARAMETER_VALUE",
+    "message": "Invalid value for maxResults: -1"
+  }
+  ```
+</Accordion>
+
+<Accordion title="401 - Unauthorized">
+  The request is unauthenticated. The bearer token is missing or incorrect.
+  
+  ```json
+  {
+    "errorCode": "UNAUTHENTICATED",
+    "message": "Missing or invalid authorization header"
+  }
+  ```
+</Accordion>
+
+<Accordion title="403 - Forbidden">
+  The request is forbidden from being fulfilled.
+  
+  ```json
+  {
+    "errorCode": "PERMISSION_DENIED",
+    "message": "User does not have access to share: vaccine_share"
+  }
+  ```
+</Accordion>
+
+<Accordion title="404 - Not Found">
+  The requested resource does not exist.
+  
+  ```json
+  {
+    "errorCode": "RESOURCE_DOES_NOT_EXIST",
+    "message": "Share not found: vaccine_share"
+  }
+  ```
+</Accordion>
+
+<Accordion title="500 - Internal Server Error">
+  The request is not handled correctly due to a server error.
+  
+  ```json
+  {
+    "errorCode": "INTERNAL_ERROR",
+    "message": "An internal error occurred"
+  }
+  ```
+</Accordion>
+
+## Usage Example
+
+<CodeGroup>
+
+```bash cURL
+curl -X GET \
+  https://sharing.delta.io/delta-sharing/shares/vaccine_share/all-tables \
+  -H 'Authorization: Bearer {token}'
+```
+
+```python Python
+import requests
+
+url = "https://sharing.delta.io/delta-sharing/shares/vaccine_share/all-tables"
+headers = {"Authorization": "Bearer {token}"}
+
+response = requests.get(url, headers=headers)
+tables = response.json()["items"]
+
+for table in tables:
+    print(f"{table['share']}.{table['schema']}.{table['name']}")
+```
+
+```javascript JavaScript
+const url = 'https://sharing.delta.io/delta-sharing/shares/vaccine_share/all-tables';
+const headers = { 'Authorization': 'Bearer {token}' };
+
+fetch(url, { headers })
+  .then(response => response.json())
+  .then(data => {
+    data.items.forEach(table => {
+      console.log(`${table.share}.${table.schema}.${table.name}`);
+    });
+  });
+```
+
+</CodeGroup>
+
+## Notes
+
+<Note>
+  The `items` field may be an empty array or missing when no results are found. The client must handle both cases.
+</Note>
+
+<Info>
+  This endpoint is a convenience method that combines listing schemas and listing tables within each schema. For large shares with many tables, consider using pagination with the `maxResults` and `pageToken` parameters.
+</Info>
+
+<Warning>
+  If `auxiliaryLocations` is present and a client does not support reading from multiple locations, they should either fall back to URL-based access via the Query Table API or throw an error.
+</Warning>

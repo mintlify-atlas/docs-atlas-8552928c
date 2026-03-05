@@ -102,9 +102,11 @@
               "api/get-share",
               "api/list-schemas",
               "api/list-tables",
+              "api/list-all-tables",
               "api/query-table",
               "api/table-metadata",
-              "api/change-data-feed"
+              "api/change-data-feed",
+              "api/generate-credentials"
             ]
           }
         ]
