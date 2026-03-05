@@ -1,0 +1,147 @@
+{
+  "projectType": "data-platform",
+  "projectName": "Delta Sharing",
+  "projectDescription": "An open protocol for secure real-time exchange of large datasets across organizations",
+  "theme": "aspen",
+  "primaryColor": "#04a8d0",
+  "lightColor": "#046c84",
+  "darkColor": "#67c4d6",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/protocol-overview",
+              "concepts/shares-schemas-tables",
+              "concepts/access-modes",
+              "concepts/profile-files"
+            ]
+          },
+          {
+            "group": "Python Connector",
+            "pages": [
+              "python/installation",
+              "python/quickstart",
+              "python/api-reference",
+              "python/advanced-usage"
+            ]
+          },
+          {
+            "group": "Apache Spark Connector",
+            "pages": [
+              "spark/installation",
+              "spark/quickstart",
+              "spark/sql-usage",
+              "spark/streaming",
+              "spark/change-data-feed"
+            ]
+          },
+          {
+            "group": "Reference Server",
+            "pages": [
+              "server/overview",
+              "server/installation",
+              "server/configuration",
+              "server/cloud-storage",
+              "server/authorization",
+              "server/docker"
+            ]
+          },
+          {
+            "group": "Community Connectors",
+            "pages": [
+              "community/overview",
+              "community/connectors"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Protocol Reference",
+        "groups": [
+          {
+            "group": "Protocol Specification",
+            "pages": [
+              "protocol/overview",
+              "protocol/rest-apis",
+              "protocol/response-format",
+              "protocol/filtering"
+            ]
+          },
+          {
+            "group": "REST API Endpoints",
+            "pages": [
+              "api/list-shares",
+              "api/get-share",
+              "api/list-schemas",
+              "api/list-tables",
+              "api/query-table",
+              "api/table-metadata",
+              "api/change-data-feed"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Guides",
+        "groups": [
+          {
+            "group": "Development",
+            "pages": [
+              "guides/building",
+              "guides/testing",
+              "guides/contributing"
+            ]
+          },
+          {
+            "group": "Operations",
+            "pages": [
+              "guides/security",
+              "guides/performance",
+              "guides/troubleshooting"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Open REST protocol for secure data sharing",
+    "Python connector with pandas and Spark integration",
+    "Apache Spark connector with SQL, streaming, and CDF support",
+    "Reference server implementation for Delta Lake and Parquet",
+    "Multi-cloud support (S3, ADLS, GCS, Cloudflare R2)",
+    "Change Data Feed (CDF) for incremental data processing",
+    "Streaming support with Spark Structured Streaming",
+    "Profile-based authentication with bearer tokens"
+  ],
+  "publicApiSurface": [
+    "SharingClient",
+    "load_as_pandas",
+    "load_as_spark",
+    "load_table_changes_as_pandas",
+    "load_table_changes_as_spark",
+    "get_table_metadata",
+    "get_table_protocol",
+    "get_table_version",
+    "GET /shares",
+    "GET /shares/{share}",
+    "GET /shares/{share}/schemas",
+    "GET /shares/{share}/schemas/{schema}/tables",
+    "GET /shares/{share}/all-tables",
+    "GET /shares/{share}/schemas/{schema}/tables/{table}/version",
+    "GET /shares/{share}/schemas/{schema}/tables/{table}/metadata",
+    "POST /shares/{share}/schemas/{schema}/tables/{table}/query",
+    "GET /shares/{share}/schemas/{schema}/tables/{table}/changes"
+  ]
+}
